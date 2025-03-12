@@ -15,6 +15,8 @@ import { useMobile } from "@/hooks/use-mobile"
 // Add this at the top of the file, after the imports:
 // This will help with performance by preventing unnecessary re-renders
 const MemoizedArrowMarker = React.memo(ArrowMarker)
+const MemoizedPlayerMarker = React.memo(PlayerMarker)
+const MemoizedTextAnnotation = React.memo(TextAnnotation)
 
 // Create a backend provider that switches between HTML5 and Touch backends
 const DndBackendProvider = ({ children }: { children: React.ReactNode }) => {
@@ -40,6 +42,7 @@ function TacticalBoardInner() {
   const boardRef = useRef<HTMLDivElement | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [isDraggingElement, setIsDraggingElement] = useState(false)
+  const [hoverPosition, setHoverPosition] = useState<{x: number, y: number} | null>(null)
   const isMobile = useMobile()
 
   const {
@@ -126,6 +129,22 @@ function TacticalBoardInner() {
     }
   }
 
+  // Handle mouse move for showing placement previews
+  const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (mode === "arrow" && arrowDrawingState === "ended") {
+      const { x, y } = getCoordinates(e)
+      updateArrowControl(x, y)
+    }
+    
+    // Update hover position for placement previews
+    if ((mode === "player" || mode === "text") && !isDraggingElement) {
+      const { x, y } = getCoordinates(e)
+      setHoverPosition({ x, y })
+    } else if (mode === "select" || mode === "arrow" || isDraggingElement) {
+      setHoverPosition(null)
+    }
+  }
+
   // Handle board interaction (click or touch)
   const handleBoardInteraction = (e: React.MouseEvent | React.TouchEvent) => {
     // Don't add elements if we're in the middle of a drag operation
@@ -135,8 +154,16 @@ function TacticalBoardInner() {
 
     if (mode === "player") {
       addPlayer(x, y)
+      // Add haptic feedback for touch devices if available
+      if (isMobile && window.navigator.vibrate) {
+        window.navigator.vibrate(50)
+      }
     } else if (mode === "text") {
       addText(x, y, "Text")
+      // Add haptic feedback for touch devices if available
+      if (isMobile && window.navigator.vibrate) {
+        window.navigator.vibrate(50)
+      }
     } else if (mode === "arrow") {
       // Handle arrow drawing state
       if (arrowDrawingState === "idle") {
@@ -148,6 +175,10 @@ function TacticalBoardInner() {
       } else if (arrowDrawingState === "ended") {
         // Complete the arrow
         completeArrow()
+        // Add haptic feedback for touch devices if available
+        if (isMobile && window.navigator.vibrate) {
+          window.navigator.vibrate(50)
+        }
       }
     } else if (mode === "select") {
       // Only clear selection when clicking on empty space in select mode
@@ -156,14 +187,6 @@ function TacticalBoardInner() {
         selectElement(null)
       }
     }
-  }
-
-  // Handle mouse/touch move for arrow drawing
-  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (mode !== "arrow" || arrowDrawingState !== "ended") return
-
-    const { x, y } = getCoordinates(e)
-    updateArrowControl(x, y)
   }
 
   // Update SVG dimensions when canvas size changes
@@ -178,6 +201,7 @@ function TacticalBoardInner() {
   useEffect(() => {
     const handleDragStart = () => {
       setIsDraggingElement(true)
+      setHoverPosition(null)
     }
 
     const handleDragEnd = () => {
@@ -219,28 +243,70 @@ function TacticalBoardInner() {
     return ""
   }
 
-  // Create a ref callback that both connects the drop target and updates our boardRef
-  const setDropTargetRef = (node: HTMLDivElement | null) => {
-    // Apply the drop ref
-    const dropResult = drop(node);
-    // Update our local ref
-    boardRef.current = node;
-    // Return the result
-    return dropResult;
-  };
+  // Get the tool cursor based on current mode
+  const getToolCursor = () => {
+    switch (mode) {
+      case "player":
+        return "cursor-cell"
+      case "text":
+        return "cursor-text"
+      case "arrow":
+        return arrowDrawingState === "idle" ? "cursor-crosshair" : "cursor-move"
+      default:
+        return "cursor-default"
+    }
+  }
 
   return (
     <div
-      ref={setDropTargetRef}
-      className="relative touch-none"
+      ref={(node) => {
+        // Update our local ref first
+        boardRef.current = node;
+        // Apply the drop ref without returning its result
+        drop(node);
+      }}
+      className={`relative touch-none transition-all duration-150 ${getToolCursor()} ${isDraggingElement ? 'cursor-grabbing' : ''} ${mode === 'select' ? 'cursor-pointer' : ''}`}
       onClick={handleBoardInteraction}
       onTouchStart={isMobile ? handleBoardInteraction : undefined}
-      onMouseMove={handlePointerMove}
-      onTouchMove={isMobile ? handlePointerMove : undefined}
+      onMouseMove={handleMouseMove}
+      onTouchMove={isMobile ? handleMouseMove : undefined}
     >
       <SoccerField />
 
       <svg ref={svgRef} className="absolute top-0 left-0 pointer-events-auto" width={canvasWidth} height={canvasHeight}>
+        {/* Element placement previews */}
+        {hoverPosition && mode === "player" && !isDraggingElement && (
+          <circle
+            cx={hoverPosition.x}
+            cy={hoverPosition.y}
+            r={18}
+            fill={useEditorStore.getState().selectedColor}
+            fillOpacity={0.4}
+            stroke={useEditorStore.getState().selectedColor}
+            strokeWidth={2}
+            strokeOpacity={0.6}
+            strokeDasharray="4 2"
+            className="animate-pulse"
+          />
+        )}
+        
+        {hoverPosition && mode === "text" && !isDraggingElement && (
+          <rect
+            x={hoverPosition.x - 30}
+            y={hoverPosition.y - 12}
+            width={60}
+            height={24}
+            fill={useEditorStore.getState().selectedColor}
+            fillOpacity={0.2}
+            stroke={useEditorStore.getState().selectedColor}
+            strokeWidth={1}
+            strokeOpacity={0.6}
+            strokeDasharray="4 2"
+            rx={4}
+            className="animate-pulse"
+          />
+        )}
+
         {/* Existing arrows - using memoized component */}
         {arrows.map((arrow) => (
           <MemoizedArrowMarker key={arrow.id} arrow={arrow} />
@@ -260,6 +326,8 @@ function TacticalBoardInner() {
                   : "none"
             }
             fill="none"
+            className="transition-all duration-150 ease-out"
+            filter="drop-shadow(0 0 2px rgba(255, 255, 255, 0.3))"
           />
         )}
 
@@ -274,6 +342,7 @@ function TacticalBoardInner() {
               stroke="rgba(255, 255, 255, 0.3)"
               strokeWidth={1}
               strokeDasharray="4 2"
+              className="transition-all duration-150 ease-out"
             />
             <line
               x1={tempArrow.endX}
@@ -283,6 +352,7 @@ function TacticalBoardInner() {
               stroke="rgba(255, 255, 255, 0.3)"
               strokeWidth={1}
               strokeDasharray="4 2"
+              className="transition-all duration-150 ease-out"
             />
             <circle
               cx={tempArrow.controlX}
@@ -291,17 +361,29 @@ function TacticalBoardInner() {
               fill="#4CAF50"
               stroke="white"
               strokeWidth={2}
+              className="animate-pulse transition-all duration-150 ease-out"
+              filter="drop-shadow(0 0 2px rgba(255, 255, 255, 0.5))"
             />
           </>
         )}
       </svg>
 
+      {/* Dynamic tooltip helper for current mode */}
+      <div className={`absolute bottom-4 left-1/2 transform -translate-x-1/2 px-3 py-1.5 bg-black/60 backdrop-blur-sm text-white text-sm rounded-full transition-opacity duration-300 ${isMobile ? mode !== 'select' ? 'opacity-70' : 'opacity-0' : 'opacity-0'}`}>
+        {mode === 'player' && 'Tap to place player'}
+        {mode === 'text' && 'Tap to add text'}
+        {mode === 'arrow' && arrowDrawingState === 'idle' && 'Tap to start arrow'}
+        {mode === 'arrow' && arrowDrawingState === 'started' && 'Tap to set endpoint'}
+        {mode === 'arrow' && arrowDrawingState === 'ended' && 'Drag to adjust curve, tap to finish'}
+      </div>
+
+      {/* Memoized components to optimize rendering */}
       {players.map((player) => (
-        <PlayerMarker key={player.id} player={player} onDragStart={() => setIsDraggingElement(true)} />
+        <MemoizedPlayerMarker key={player.id} player={player} onDragStart={() => setIsDraggingElement(true)} />
       ))}
 
       {textAnnotations.map((annotation) => (
-        <TextAnnotation key={annotation.id} annotation={annotation} onDragStart={() => setIsDraggingElement(true)} />
+        <MemoizedTextAnnotation key={annotation.id} annotation={annotation} onDragStart={() => setIsDraggingElement(true)} />
       ))}
     </div>
   )
