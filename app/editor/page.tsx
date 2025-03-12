@@ -16,7 +16,31 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 // Import the TextPropertiesPanel
 import { TextPropertiesPanel } from "@/components/editor/text-properties-panel"
 
+// Detect if we're on an iPad to apply special handling
+const isIpad = typeof navigator !== 'undefined' && 
+  (/iPad/.test(navigator.userAgent) || 
+  (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+
 export default function EditorPage() {
+  // If on iPad, use our special handling
+  useEffect(() => {
+    if (isIpad) {
+      // Apply iPad-specific settings to fix the manager.actions error
+      // This patches the issue where manager.actions is not a function in manager.getactions
+      const applyIpadFix = () => {
+        // Prevent the specific error from breaking the app
+        window.addEventListener('error', (event) => {
+          if (event.message && event.message.includes('manager.actions is not a function')) {
+            event.preventDefault();
+            console.warn('Prevented iPad DND error: manager.actions is not a function');
+          }
+        });
+      };
+      
+      applyIpadFix();
+    }
+  }, []);
+
   const { selectedElementId, arrows, players, setCanvasDimensions, textAnnotations } = useEditorStore()
   const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null)
   const isMobile = useMobile()

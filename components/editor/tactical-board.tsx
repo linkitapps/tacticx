@@ -20,14 +20,24 @@ const MemoizedArrowMarker = React.memo(ArrowMarker)
 const DndBackendProvider = ({ children }: { children: React.ReactNode }) => {
   const isMobile = useMobile()
 
-  // Use TouchBackend with options for mobile, HTML5Backend for desktop
-  const backend = isMobile ? TouchBackend({ enableMouseEvents: true, delayTouchStart: 100 }) : HTML5Backend
-
-  return <DndProvider backend={backend}>{children}</DndProvider>
+  // Use TouchBackend with proper options for mobile, HTML5Backend for desktop
+  // Fixed for iOS/iPad compatibility
+  return (
+    <DndProvider 
+      backend={isMobile ? TouchBackend : HTML5Backend} 
+      options={isMobile ? {
+        enableMouseEvents: true,
+        delayTouchStart: 0, // Reduced delay for better iPad responsiveness
+        ignoreContextMenu: true
+      } : undefined}
+    >
+      {children}
+    </DndProvider>
+  )
 }
 
 function TacticalBoardInner() {
-  const boardRef = useRef<HTMLDivElement>(null)
+  const boardRef = useRef<HTMLDivElement | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [isDraggingElement, setIsDraggingElement] = useState(false)
   const isMobile = useMobile()
@@ -209,12 +219,19 @@ function TacticalBoardInner() {
     return ""
   }
 
+  // Create a ref callback that both connects the drop target and updates our boardRef
+  const setDropTargetRef = (node: HTMLDivElement | null) => {
+    // Apply the drop ref
+    const dropResult = drop(node);
+    // Update our local ref
+    boardRef.current = node;
+    // Return the result
+    return dropResult;
+  };
+
   return (
     <div
-      ref={(node) => {
-        drop(node)
-        boardRef.current = node
-      }}
+      ref={setDropTargetRef}
       className="relative touch-none"
       onClick={handleBoardInteraction}
       onTouchStart={isMobile ? handleBoardInteraction : undefined}
