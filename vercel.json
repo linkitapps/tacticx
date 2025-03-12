@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "name": "tacticx",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://zdvdpkioccaxnjgsyxmp.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkdmRwa2lvY2NheG5qZ3N5eG1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDE2NDQzNTYsImV4cCI6MjA1NzIyMDM1Nn0.a13Tn0wKa5QvRGXmzhafUVRNlhmQ8DW1CNGjaBSdbhY"
+  },
+  "public": true
+} 

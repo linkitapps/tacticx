@@ -1,0 +1,131 @@
+---
+description: Apply these rules when creating the project
+globs:
+alwaysApply: true
+---
+## Project Overview
+
+*   **Type:** cursor_project_rules
+*   **Description:** Tacticx.app is a simple, web-based tactical board designed for football coaches, analysts, and enthusiasts. It enables users to create, save, and share static football tactics using an intuitive drag-and-drop interface with a modern dark mode and vibrant Tactical Orange accents.
+*   **Primary Goal:** To provide a fast, secure, and developer-friendly system that addresses the need for a straightforward, user-friendly tool for planning and sharing football tactics, while laying a foundation for future scalability and feature enhancements.
+
+## Project Structure
+
+### Framework-Specific Routing
+
+*   **Directory Rules:**
+
+    *   **Next.js 14 (App Router):** Use the `app/[route]/page.tsx` convention to structure pages. Enforce the use of nested route folders to maintain clear separation between different functionalities (e.g., `app/editor/page.tsx`, `app/tactic/[id].tsx`).
+    *   Example: "Next.js 14 (App Router)" → `app/[route]/page.tsx` conventions
+    *   Example: "Next.js (Pages Router)" → `pages/[route].tsx` pattern *(Not applicable for this project)*
+    *   Example: "React Router 6" → `src/routes/` with `createBrowserRouter` *(If ever needed in future projects)*
+
+### Core Directories
+
+*   **Versioned Structure:**
+
+    *   **app/**: Next.js 14 App Router core structure including pages for Landing, Editor, Tactic Viewer, Profile, and Dashboard.
+    *   **app/api**: Next.js 14 API routes with Route Handlers for backend operations (authentication, tactics management, etc.).
+    *   **src/components**: Reusable UI components built with TailwindCSS and ShadCN UI patterns.
+    *   **src/lib**: Utility functions and Supabase helper integrations.
+    *   **src/store**: Zustand state management implementations.
+
+### Key Files
+
+*   **Stack-Versioned Patterns:**
+
+    *   **app/layout.tsx**: Root layout for Next.js 14, providing global styling and common providers.
+    *   **app/page.tsx**: Landing Page implementation following App Router conventions.
+    *   **app/editor/page.tsx**: Tactical Board Editor, featuring drag-and-drop functionality and integrated undo/redo controls.
+    *   **app/tactic/[id].tsx**: Tactic Viewer for read-only shared tactics with rich metadata support.
+    *   **app/profile/[username].tsx**: Public Profile Page displaying user's details and shared tactics.
+    *   **app/dashboard/page.tsx**: Dashboard for managing saved tactics, including create, edit, and delete operations.
+
+## Tech Stack Rules
+
+*   **Version Enforcement:**
+
+    *   **next@14:** App Router must be used; no usage of legacy `getInitialProps` patterns.
+    *   **tailwindcss@latest & shadcn_ui:** Use consistent design tokens and dark mode styling with Tactical Orange accents for interactive elements.
+    *   **zustand:** Simple state management with modular stores for different app sections.
+    *   **react_hook_form:** Efficient form handling for authentication and other user-driven input forms.
+    *   **supabase_auth & supabase_postgres:** Leverage Supabase's authentication and JSONB-based database structure ensuring scalability and security with Row-Level Security (RLS).
+    *   **supabase_storage:** Manage static assets like profile images, ensuring efficient storage and retrieval.
+    *   **vercel:** Deploy Next.js App Router projects with optimized performance and one-click deployment.
+    *   **github_actions:** Automate testing and CI/CD pipelines.
+    *   **react_toastify:** Implement unobtrusive toast notifications for error handling and user feedback.
+    *   **lucide_icons:** Utilize minimalist, modern icons throughout the UI.
+
+## PRD Compliance
+
+*   **Non-Negotiable:**
+
+    *   "Tacticx.app is a simple, web-based tactical board designed specifically for football coaches, analysts, and enthusiasts. It addresses the need for a straightforward and user-friendly tool for creating, saving, and sharing static football tactics via an intuitive interface." (Extracted from the PRD)
+    *   Enforce the core features such as secure user authentication, JSONB-based tactic storage, and dedicated pages for the tactical editor, viewer, and profile management.
+    *   Secure sharing via unique URLs and rich metadata (OpenGraph, Twitter Cards, LinkedIn) must be implemented as described.
+
+## App Flow Integration
+
+*   **Stack-Aligned Flow:**
+
+    *   Next.js 14 Auth Flow → `app/auth/login/page.tsx` should utilize server actions for secure authentication.
+    *   Dashboard and Editor interactions follow a clear routing pattern from `app/dashboard/page.tsx` to `app/editor/page.tsx` with seamless redirection and feedback via toast notifications.
+    *   Profile and Tactic Viewer pages are structured under `app/profile/[username].tsx` and `app/tactic/[id].tsx` respectively to maintain consistency across public and private views.
+
+## Best Practices
+
+*   **next.js**
+
+    *   Use file-based routing with clear, nested structures in the `app/` directory.
+    *   Leverage server components and server actions for data fetching and form handling.
+    *   Enforce immutability and isolation of state through modular components.
+
+*   **tailwindcss & shadcn_ui**
+
+    *   Maintain design consistency with a unified color palette and typography (e.g., Tactical Orange, dark mode themes, Sora for branding, Satoshi for headers, Manrope for body text).
+    *   Use utility classes to build responsive UI components that adapt seamlessly to different screen sizes.
+    *   Apply dark mode as default with subtle glow effects and gradients for visual depth.
+
+*   **zustand**
+
+    *   Structure state slicing logically by features (e.g., authentication, tactical data, notifications).
+    *   Use middleware where necessary to log state changes during development.
+    *   Keep the state minimal and avoid redundancy to optimize performance.
+
+*   **react_hook_form**
+
+    *   Use schema validation for forms to ensure data integrity.
+    *   Implement controlled components to manage complex form states effectively.
+    *   Leverage error messages from form validation to provide real-time feedback.
+
+*   **supabase (auth, postgres, storage)**
+
+    *   Enforce Supabase Row-Level Security (RLS) to maintain data privacy.
+    *   Use JSONB for scalable and flexible storage of tactic details.
+    *   Incorporate audit logging for sensitive actions (login attempts, data edits) to bolster security.
+
+*   **vercel & github_actions**
+
+    *   Automate deployments with CI/CD pipelines to ensure code quality and reduce manual errors.
+    *   Monitor performance using Vercel Analytics and Supabase logs.
+    *   Keep configuration files and environment variables secure and out of version control.
+
+*   **react_toastify**
+
+    *   Use unobtrusive notifications to alert users of actions in progress or errors.
+    *   Provide clear, actionable messages that align with the app’s overall design language.
+    *   Integrate loading indicators alongside toast notifications for seamless user experience.
+
+*   **lucide_icons**
+
+    *   Use a consistent set of icons for actions, status indications, and navigation purposes.
+    *   Ensure icons are scalable and accessible across different devices and screen resolutions.
+    *   Maintain simplicity and clarity in icon design to support the minimalist UI approach.
+
+## Rules
+
+*   Derive folder/file patterns **directly** from the techStackDoc versions provided.
+*   If using Next.js 14 App Router, enforce the `app/` directory with nested route folders. Do not use flat structures like `pages/`.
+*   Maintain consistency in file naming and directory structures across all components and pages.
+*   Reflect similar routing principles for alternative frameworks (e.g., React Router, SvelteKit) in future projects without mixing version patterns.
+*   Follow the prescribed best practices for each technology in the tech stack to ensure optimal performance, security, and maintainability.

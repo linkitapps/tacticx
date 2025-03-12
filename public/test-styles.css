@@ -1,0 +1,20 @@
+body {
+  background-color: #222;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+h1 {
+  color: red;
+  font-size: 36px;
+  text-decoration: underline;
+}
+
+.test-box {
+  background-color: purple;
+  padding: 20px;
+  margin: 20px;
+  border: 5px solid yellow;
+  color: white;
+  font-weight: bold;
+} 
