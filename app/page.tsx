@@ -15,22 +15,9 @@ export default function Home() {
               <br />
               <span className="text-primary">made simple.</span>
             </h1>
-            
-            <div className="text-md md:text-lg text-muted-foreground">
-              <span className="text-highlight">Animate</span>
-              <span className="mx-2">•</span>
-              <span className="text-primary">Strategize</span>
-              <span className="mx-2">•</span>
-              <span className="text-success">Win</span>
-            </div>
           </div>
           
-          <div className="flex flex-wrap gap-3 pt-4 justify-center">
-            <Button asChild size="lg" className="px-6 group">
-              <Link href="/signup">
-                Start creating <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </Button>
+          <div className="flex justify-center pt-4">
             <Button asChild variant="secondary" size="lg" className="px-6">
               <Link href="/editor">Try demo</Link>
             </Button>
