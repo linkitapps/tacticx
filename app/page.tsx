@@ -6,32 +6,24 @@ import { Button } from "@/components/ui/button"
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col bg-background">
-      {/* Header with brandable logo */}
-      <header className="border-b border-muted/30">
-        <div className="container mx-auto flex justify-between items-center h-16 px-4">
-          <div className="font-spaceGrotesk text-xl font-black tracking-wider uppercase bg-gradient-to-r from-primary via-highlight to-primary bg-clip-text text-transparent pb-1 flex items-center">
-            TACTICX
-            <span className="text-xs align-top ml-1 opacity-80">.app</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link 
-              href="/login" 
-              className="text-sm text-foreground/70 hover:text-primary transition-colors"
-            >
-              Login
-            </Link>
-          </div>
-        </div>
-      </header>
-
       {/* Hero section with minimal centered content */}
       <section className="flex-1 flex items-center justify-center p-6">
-        <div className="max-w-xl space-y-10 text-center">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight">
-            <span className="text-foreground/90">Football tactics</span>
-            <br />
-            <span className="text-primary">made simple.</span>
-          </h2>
+        <div className="max-w-xl space-y-8 text-center">
+          <div className="space-y-2">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight">
+              <span className="text-foreground/90">Football tactics</span>
+              <br />
+              <span className="text-primary">made simple.</span>
+            </h1>
+            
+            <div className="text-md md:text-lg text-muted-foreground">
+              <span className="text-highlight">Animate</span>
+              <span className="mx-2">•</span>
+              <span className="text-primary">Strategize</span>
+              <span className="mx-2">•</span>
+              <span className="text-success">Win</span>
+            </div>
+          </div>
           
           <div className="flex flex-wrap gap-3 pt-4 justify-center">
             <Button asChild size="lg" className="px-6 group">
