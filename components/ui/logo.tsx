@@ -15,12 +15,7 @@ export function Logo({ size = "md", className }: LogoProps) {
 
   return (
     <span
-      className={cn("font-spaceGrotesk font-black tracking-tight text-white", sizeClasses[size], className)}
-      style={{
-        fontVariant: "normal",
-        letterSpacing: "0.03em",
-        textShadow: "0 0 8px rgba(255, 255, 255, 0.3)",
-      }}
+      className={cn("font-bold text-foreground/90", sizeClasses[size], className)}
     >
       tacticx.app
     </span>
