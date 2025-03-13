@@ -47,6 +47,28 @@ export function SoccerField() {
       }
     }
 
+    // Safe arc drawing helper function
+    const drawArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number, fill = false) => {
+      // Validate inputs to prevent errors on mobile devices
+      if (isNaN(x) || isNaN(y) || isNaN(radius) || radius <= 0 || 
+          isNaN(startAngle) || isNaN(endAngle)) {
+        console.warn("Invalid parameters for arc drawing:", { x, y, radius, startAngle, endAngle });
+        return;
+      }
+      
+      try {
+        ctx.beginPath();
+        ctx.arc(x, y, radius, startAngle, endAngle);
+        if (fill) {
+          ctx.fill();
+        } else {
+          ctx.stroke();
+        }
+      } catch (err) {
+        console.error("Error drawing arc:", err);
+      }
+    }
+
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -110,16 +132,11 @@ export function SoccerField() {
     drawLine(centerX, topY, centerX, topY + fieldHeight)
 
     // Center circle - standard is 9.15m radius (9.15/105 ≈ 0.087 of field length)
-    const centerCircleRadius = fieldWidth * 0.087
-    ctx.beginPath()
-    ctx.arc(centerX, centerY, centerCircleRadius, 0, Math.PI * 2)
-    ctx.stroke()
+    const centerCircleRadius = Math.max(5, fieldWidth * 0.087)
+    drawArc(centerX, centerY, centerCircleRadius, 0, Math.PI * 2)
 
     // Center dot
-    ctx.beginPath()
-    ctx.arc(centerX, centerY, 3, 0, Math.PI * 2)
-    ctx.fillStyle = "#FFFFFF"
-    ctx.fill()
+    drawArc(centerX, centerY, 3, 0, Math.PI * 2, true)
 
     // Penalty areas - standard is 16.5m x 40.3m (16.5/105 ≈ 0.157, 40.3/68 ≈ 0.593)
     const penaltyAreaWidth = fieldWidth * 0.157
@@ -150,49 +167,32 @@ export function SoccerField() {
     const penaltySpotDistance = fieldWidth * 0.105
 
     // Left penalty spot
-    ctx.beginPath()
-    ctx.arc(padding + penaltySpotDistance, centerY, 3, 0, Math.PI * 2)
-    ctx.fill()
+    drawArc(padding + penaltySpotDistance, centerY, 3, 0, Math.PI * 2, true)
 
     // Right penalty spot
-    ctx.beginPath()
-    ctx.arc(canvas.width - padding - penaltySpotDistance, centerY, 3, 0, Math.PI * 2)
-    ctx.fill()
+    drawArc(canvas.width - padding - penaltySpotDistance, centerY, 3, 0, Math.PI * 2, true)
 
     // Penalty arcs - standard is 9.15m from penalty spot (same as center circle)
-
     // Left penalty arc - draw only the portion outside the penalty area
-    ctx.beginPath()
-    ctx.arc(padding + penaltySpotDistance, centerY, centerCircleRadius, -Math.PI * 0.3, Math.PI * 0.3)
-    ctx.stroke()
+    drawArc(padding + penaltySpotDistance, centerY, centerCircleRadius, -Math.PI * 0.3, Math.PI * 0.3)
 
     // Right penalty arc
-    ctx.beginPath()
-    ctx.arc(canvas.width - padding - penaltySpotDistance, centerY, centerCircleRadius, Math.PI * 0.7, Math.PI * 1.3)
-    ctx.stroke()
+    drawArc(canvas.width - padding - penaltySpotDistance, centerY, centerCircleRadius, Math.PI * 0.7, Math.PI * 1.3)
 
     // Corner arcs - standard is 1m radius (1/105 ≈ 0.0095)
     const cornerRadius = Math.max(5, fieldWidth * 0.0095) // Minimum 5px for visibility
 
     // Top-left corner
-    ctx.beginPath()
-    ctx.arc(padding, topY, cornerRadius, 0, Math.PI / 2)
-    ctx.stroke()
+    drawArc(padding, topY, cornerRadius, 0, Math.PI / 2)
 
     // Top-right corner
-    ctx.beginPath()
-    ctx.arc(canvas.width - padding, topY, cornerRadius, Math.PI / 2, Math.PI)
-    ctx.stroke()
+    drawArc(canvas.width - padding, topY, cornerRadius, Math.PI / 2, Math.PI)
 
     // Bottom-left corner
-    ctx.beginPath()
-    ctx.arc(padding, topY + fieldHeight, cornerRadius, -Math.PI / 2, 0)
-    ctx.stroke()
+    drawArc(padding, topY + fieldHeight, cornerRadius, -Math.PI / 2, 0)
 
     // Bottom-right corner
-    ctx.beginPath()
-    ctx.arc(canvas.width - padding, topY + fieldHeight, cornerRadius, Math.PI, Math.PI * 1.5)
-    ctx.stroke()
+    drawArc(canvas.width - padding, topY + fieldHeight, cornerRadius, Math.PI, Math.PI * 1.5)
 
     // Draw goals - standard is 7.32m wide x 2.44m high (7.32/68 ≈ 0.108, 2.44/105 ≈ 0.023)
     const goalWidth = fieldHeight * 0.108
@@ -243,20 +243,24 @@ export function SoccerField() {
     )
 
     // Add a subtle vignette effect
-    const vignette = ctx.createRadialGradient(
-      centerX,
-      centerY,
-      0,
-      centerX,
-      centerY,
-      Math.max(canvas.width, canvas.height),
-    )
-    vignette.addColorStop(0, "rgba(0,0,0,0)")
-    vignette.addColorStop(0.7, "rgba(0,0,0,0)")
-    vignette.addColorStop(1, "rgba(0,0,0,0.4)")
+    try {
+      const vignette = ctx.createRadialGradient(
+        centerX,
+        centerY,
+        0,
+        centerX,
+        centerY,
+        Math.max(canvas.width, canvas.height),
+      )
+      vignette.addColorStop(0, "rgba(0,0,0,0)")
+      vignette.addColorStop(0.7, "rgba(0,0,0,0)")
+      vignette.addColorStop(1, "rgba(0,0,0,0.4)")
 
-    ctx.fillStyle = vignette
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.fillStyle = vignette
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    } catch (err) {
+      console.warn("Error creating vignette effect:", err)
+    }
 
     // Add a subtle grid pattern
     ctx.strokeStyle = "rgba(255, 255, 255, 0.03)"
