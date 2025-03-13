@@ -2,9 +2,6 @@
 
 import React from "react"
 import { useRef, useEffect, useState } from "react"
-import { DndProvider, useDrop } from "react-dnd"
-import { HTML5Backend } from "react-dnd-html5-backend"
-import { TouchBackend } from "react-dnd-touch-backend"
 import { SoccerField } from "./soccer-field"
 import { PlayerMarker } from "./player-marker"
 import { ArrowMarker } from "./arrow-marker"
@@ -12,40 +9,24 @@ import { TextAnnotation } from "./text-annotation"
 import { useEditorStore } from "@/store/useEditorStore"
 import { useMobile } from "@/hooks/use-mobile"
 
-// Add this at the top of the file, after the imports:
 // This will help with performance by preventing unnecessary re-renders
 const MemoizedArrowMarker = React.memo(ArrowMarker)
 const MemoizedPlayerMarker = React.memo(PlayerMarker)
 const MemoizedTextAnnotation = React.memo(TextAnnotation)
 
-// Create a backend provider that switches between HTML5 and Touch backends
-const DndBackendProvider = ({ children }: { children: React.ReactNode }) => {
+export function TacticalBoard() {
   const isMobile = useMobile()
-
-  // Use TouchBackend with proper options for mobile, HTML5Backend for desktop
-  // Fixed for iOS/iPad compatibility
+  
   return (
-    <DndProvider 
-      backend={isMobile ? TouchBackend : HTML5Backend} 
-      options={isMobile ? {
-        enableMouseEvents: true,
-        delayTouchStart: 100, // Increased delay for better compatibility
-        ignoreContextMenu: true,
-        touchSlop: 10, // More tolerance for touch movement
-        enableTouchEvents: true,
-        enableKeyboardEvents: true,
-        enableHoverOutsideTarget: true
-      } : undefined}
-    >
-      {children}
-    </DndProvider>
+    <div className="relative w-full overflow-hidden rounded-lg">
+      <TacticalBoardInner />
+    </div>
   )
 }
 
 function TacticalBoardInner() {
   const boardRef = useRef<HTMLDivElement | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
-  const dropRef = useRef<HTMLDivElement | null>(null)
   const [isDraggingElement, setIsDraggingElement] = useState(false)
   const [hoverPosition, setHoverPosition] = useState<{x: number, y: number} | null>(null)
   const isMobile = useMobile()
@@ -70,54 +51,6 @@ function TacticalBoardInner() {
     addText,
     selectElement,
   } = useEditorStore()
-
-  // Handle drop for players and text
-  const [{ isOver }, drop] = useDrop(
-    () => ({
-      accept: ["PLAYER", "TEXT"],
-      drop: (item: { id: string; type: string }, monitor) => {
-        const delta = monitor.getDifferenceFromInitialOffset()
-        if (!delta) return
-
-        const type = item.type
-        const id = item.id
-
-        if (type === "player") {
-          const player = players.find((p) => p.id === id)
-          if (player) {
-            updatePlayer(id, {
-              x: player.x + delta.x,
-              y: player.y + delta.y,
-            })
-          }
-        } else if (type === "text") {
-          const text = textAnnotations.find((t) => t.id === id)
-          if (text) {
-            updateText(id, {
-              x: text.x + delta.x,
-              y: text.y + delta.y,
-            })
-          }
-        }
-
-        // Reset dragging state after drop
-        setTimeout(() => {
-          setIsDraggingElement(false)
-        }, 50)
-      },
-      collect: (monitor) => ({
-        isOver: !!monitor.isOver(),
-      }),
-    }),
-    [players, textAnnotations, updatePlayer, updateText],
-  )
-
-  // Connect the drop ref
-  useEffect(() => {
-    if (dropRef.current && typeof drop === 'function') {
-      drop(dropRef.current)
-    }
-  }, [drop])
 
   // Get coordinates from either mouse or touch event
   const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
@@ -226,36 +159,18 @@ function TacticalBoardInner() {
     }
   }, [canvasWidth, canvasHeight])
 
-  // Listen for drag start and end events
-  useEffect(() => {
-    const handleDragStart = () => {
-      setIsDraggingElement(true)
-      setHoverPosition(null)
-    }
+  // Listen for drag start and end events from children
+  const handleDragStart = () => {
+    setIsDraggingElement(true)
+    setHoverPosition(null)
+  }
 
-    const handleDragEnd = () => {
-      // We'll set this to false in the drop handler to ensure
-      // we don't trigger a click right after a drop
-      setTimeout(() => {
-        setIsDraggingElement(false)
-      }, 100)
-    }
-
-    // Add global event listeners
-    window.addEventListener("dragstart", handleDragStart)
-    window.addEventListener("dragend", handleDragEnd)
-
-    // For touch devices
-    window.addEventListener("touchstart", handleDragStart)
-    window.addEventListener("touchend", handleDragEnd)
-
-    return () => {
-      window.removeEventListener("dragstart", handleDragStart)
-      window.removeEventListener("dragend", handleDragEnd)
-      window.removeEventListener("touchstart", handleDragStart)
-      window.removeEventListener("touchend", handleDragEnd)
-    }
-  }, [])
+  const handleDragEnd = () => {
+    // Delay resetting the dragging state to prevent accidental interactions
+    setTimeout(() => {
+      setIsDraggingElement(false)
+    }, 50)
+  }
 
   // Draw the current arrow being created
   const getTempArrowPath = () => {
@@ -288,11 +203,7 @@ function TacticalBoardInner() {
 
   return (
     <div
-      ref={(node) => {
-        // Update our local ref first
-        boardRef.current = node;
-        dropRef.current = node;
-      }}
+      ref={boardRef}
       className={`relative touch-none transition-all duration-150 ${getToolCursor()} ${isDraggingElement ? 'cursor-grabbing' : ''} ${mode === 'select' ? 'cursor-pointer' : ''}`}
       onClick={handleBoardInteraction}
       onTouchStart={isMobile ? handleBoardInteraction : undefined}
@@ -405,23 +316,21 @@ function TacticalBoardInner() {
         {mode === 'arrow' && arrowDrawingState === 'ended' && 'Drag to adjust curve, tap to finish'}
       </div>
 
-      {/* Memoized components to optimize rendering */}
+      {/* Player markers with new drag handlers */}
       {players.map((player) => (
-        <MemoizedPlayerMarker key={player.id} player={player} onDragStart={() => setIsDraggingElement(true)} />
+        <MemoizedPlayerMarker 
+          key={player.id} 
+          player={player} 
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        />
       ))}
 
+      {/* Text annotations - to be updated in a similar way */}
       {textAnnotations.map((annotation) => (
-        <MemoizedTextAnnotation key={annotation.id} annotation={annotation} onDragStart={() => setIsDraggingElement(true)} />
+        <MemoizedTextAnnotation key={annotation.id} annotation={annotation} onDragStart={handleDragStart} />
       ))}
     </div>
-  )
-}
-
-export function TacticalBoard() {
-  return (
-    <DndBackendProvider>
-      <TacticalBoardInner />
-    </DndBackendProvider>
   )
 }
 

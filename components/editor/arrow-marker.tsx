@@ -1,500 +1,387 @@
 "use client"
 
-import type React from "react"
-import { useState, useEffect, useRef } from "react"
-import { useEditorStore, type ArrowType } from "@/store/useEditorStore"
+import React, { useRef, useState, useEffect } from "react"
+import { type ArrowType, useEditorStore } from "@/store/useEditorStore"
 import { cn } from "@/lib/utils"
 import { useMobile } from "@/hooks/use-mobile"
 
 interface ArrowMarkerProps {
   arrow: ArrowType
+  onDragStart?: () => void
+  onDragEnd?: () => void
 }
 
-export function ArrowMarker({ arrow }: ArrowMarkerProps) {
-  const { removeArrow, selectElement, selectedElementId, mode, updateArrow } = useEditorStore()
+export function ArrowMarker({ arrow, onDragStart, onDragEnd }: ArrowMarkerProps) {
+  const { updateArrow, removeArrow, selectElement, selectedElementId, mode } = useEditorStore()
+  const [isDragging, setIsDragging] = useState(false)
+  const [isDraggingEnd, setIsDraggingEnd] = useState(false)
+  const elementRef = useRef<HTMLDivElement>(null)
+  const startPointRef = useRef<HTMLDivElement>(null)
+  const endPointRef = useRef<HTMLDivElement>(null)
+  const dragStartPosRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
   const isMobile = useMobile()
-  const [isDraggingPoint, setIsDraggingPoint] = useState<"start" | "end" | "control" | null>(null)
-  const [isHovering, setIsHovering] = useState(false)
-  const elementRef = useRef<SVGGElement>(null)
 
   const isSelected = selectedElementId === arrow.id
 
-  // Handle interaction (click or touch)
-  const handleInteraction = (e: React.MouseEvent | React.TouchEvent) => {
-    // Stop event propagation to prevent deselection
-    e.stopPropagation()
-    if ("preventDefault" in e) e.preventDefault()
+  // Calculate arrow properties
+  const dx = arrow.endX - arrow.startX
+  const dy = arrow.endY - arrow.startY
+  const length = Math.sqrt(dx * dx + dy * dy)
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI)
+
+  // Track drag start position and handle events for the entire arrow
+  const handleDragStart = (clientX: number, clientY: number) => {
+    if (!elementRef.current) return
+
+    // Auto-switch to select mode when dragging starts
+    if (mode !== "select") {
+      useEditorStore.setState({ mode: "select" })
+    }
 
     // Select this arrow
     selectElement(arrow.id)
 
-    // If not in select mode, switch to select mode
+    // Calculate the current element position relative to the board
+    dragStartPosRef.current = {
+      x: arrow.startX,
+      y: arrow.startY,
+      clientX,
+      clientY
+    }
+
+    setIsDragging(true)
+    setIsDraggingEnd(false)
+    
+    // Haptic feedback for drag start
+    if (isMobile && window.navigator && window.navigator.vibrate) {
+      try {
+        window.navigator.vibrate(30)
+      } catch (err) {
+        console.warn("Vibration not supported", err)
+      }
+    }
+
+    // Notify parent 
+    if (onDragStart) onDragStart()
+
+    // Prevent text selection during drag
+    document.body.style.userSelect = 'none'
+    document.body.style.webkitUserSelect = 'none'
+  }
+
+  // Track drag start position for the end point of the arrow
+  const handleEndPointDragStart = (clientX: number, clientY: number, e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation()
+    
+    if (!endPointRef.current) return
+
+    // Auto-switch to select mode when dragging starts
     if (mode !== "select") {
       useEditorStore.setState({ mode: "select" })
+    }
+
+    // Select this arrow
+    selectElement(arrow.id)
+
+    // Calculate the current element position relative to the board
+    dragStartPosRef.current = {
+      x: arrow.endX,
+      y: arrow.endY,
+      clientX,
+      clientY
+    }
+
+    setIsDragging(true)
+    setIsDraggingEnd(true)
+    
+    // Haptic feedback for drag start
+    if (isMobile && window.navigator && window.navigator.vibrate) {
+      try {
+        window.navigator.vibrate(30)
+      } catch (err) {
+        console.warn("Vibration not supported", err)
+      }
+    }
+
+    // Notify parent 
+    if (onDragStart) onDragStart()
+
+    // Prevent text selection during drag
+    document.body.style.userSelect = 'none'
+    document.body.style.webkitUserSelect = 'none'
+  }
+
+  // Handle mouse move during drag
+  const handleDragMove = (clientX: number, clientY: number) => {
+    if (!isDragging || !dragStartPosRef.current) return
+
+    const deltaX = clientX - dragStartPosRef.current.clientX
+    const deltaY = clientY - dragStartPosRef.current.clientY
+
+    if (isDraggingEnd) {
+      // Only update the end point
+      updateArrow(arrow.id, {
+        endX: dragStartPosRef.current.x + deltaX,
+        endY: dragStartPosRef.current.y + deltaY
+      })
+    } else {
+      // Update both start and end points (move the entire arrow)
+      updateArrow(arrow.id, {
+        startX: dragStartPosRef.current.x + deltaX,
+        startY: dragStartPosRef.current.y + deltaY,
+        endX: arrow.endX + deltaX,
+        endY: arrow.endY + deltaY
+      })
+    }
+  }
+
+  // Handle end of drag operation
+  const handleDragEnd = () => {
+    if (!isDragging) return
+
+    setIsDragging(false)
+    setIsDraggingEnd(false)
+    dragStartPosRef.current = null
+
+    // Notify parent
+    if (onDragEnd) onDragEnd()
+
+    // Re-enable text selection
+    document.body.style.userSelect = ''
+    document.body.style.webkitUserSelect = ''
+  }
+
+  // Mouse event handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only initiate drag on left mouse button
+    if (e.button !== 0) return
+    
+    // Don't start drag if clicked on a button
+    if ((e.target as HTMLElement).tagName === 'BUTTON') return
+
+    e.stopPropagation()
+    handleDragStart(e.clientX, e.clientY)
+
+    // Add global event listeners for mouse move and up
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleEndPointMouseDown = (e: React.MouseEvent) => {
+    // Only initiate drag on left mouse button
+    if (e.button !== 0) return
+    
+    handleEndPointDragStart(e.clientX, e.clientY, e)
+
+    // Add global event listeners for mouse move and up
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    e.preventDefault()
+    handleDragMove(e.clientX, e.clientY)
+  }
+
+  const handleMouseUp = (e: MouseEvent) => {
+    e.preventDefault()
+    handleDragEnd()
+    
+    // Remove global event listeners
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation()
+    // Auto-switch to select mode when clicking arrow
+    if (mode !== "select") {
+      useEditorStore.setState({ mode: "select" })
+    }
+    selectElement(arrow.id)
+  }
+
+  // Touch event handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation()
+    
+    // Get the first touch point
+    const touch = e.touches[0]
+
+    // First, select the arrow
+    handleClick(e)
+    
+    handleDragStart(touch.clientX, touch.clientY)
+  }
+
+  const handleEndPointTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation()
+    
+    // Get the first touch point
+    const touch = e.touches[0]
+    
+    handleEndPointDragStart(touch.clientX, touch.clientY, e)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // Prevent scrolling
+    e.preventDefault()
+    
+    const touch = e.touches[0]
+    
+    // Continue drag movement if we've started dragging
+    if (isDragging) {
+      handleDragMove(touch.clientX, touch.clientY)
+    }
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation()
+    
+    // If we were dragging, end the drag operation
+    if (isDragging) {
+      handleDragEnd()
     }
   }
 
   const handleDelete = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation()
-    if ("preventDefault" in e) e.preventDefault()
     removeArrow(arrow.id)
-  }
-
-  // Get coordinates from either mouse or touch event
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
-    const svg = elementRef.current?.closest("svg")
-    if (!svg) return { x: 0, y: 0 }
-
-    const rect = svg.getBoundingClientRect()
-
-    // Handle touch event
-    if ("touches" in e) {
-      const touch = e.touches[0]
-      return {
-        x: touch.clientX - rect.left,
-        y: touch.clientY - rect.top,
+    
+    // Add haptic feedback for deletion
+    if (isMobile && window.navigator && window.navigator.vibrate) {
+      try {
+        window.navigator.vibrate([30, 50, 80])
+      } catch (err) {
+        console.warn("Vibration not supported", err)
       }
-    }
-
-    // Handle mouse event
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
     }
   }
 
-  // Handle point interaction start (mousedown or touchstart)
-  const handlePointInteractionStart = (e: React.MouseEvent | React.TouchEvent, point: "start" | "end" | "control") => {
-    e.stopPropagation()
-    if ("preventDefault" in e) e.preventDefault()
-
-    // Ensure this arrow is selected when manipulating points
-    if (selectedElementId !== arrow.id) {
-      selectElement(arrow.id)
-    }
-
-    setIsDraggingPoint(point)
-
-    // Add a class to the body to indicate dragging is in progress
-    document.body.classList.add("arrow-point-dragging")
-  }
-
-  // Handle pointer move (mousemove or touchmove)
-  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (isDraggingPoint === null) return
-
-    const { x, y } = getCoordinates(e)
-    const svg = elementRef.current?.closest("svg")
-    if (!svg) return
-
-    // Use direct DOM manipulation for smoother dragging
-    if (isDraggingPoint === "start") {
-      // Update the DOM elements directly
-      const pathElements = svg.querySelectorAll(`path[data-arrow-id="${arrow.id}"]`)
-      pathElements.forEach((path) => {
-        const d = path.getAttribute("d") || ""
-        const newD = d.replace(/M\s+[\d.]+\s+[\d.]+/, `M ${x} ${y}`)
-        path.setAttribute("d", newD)
-      })
-
-      // Update control point lines if they exist
-      const controlLines = svg.querySelectorAll(`line[data-arrow-id="${arrow.id}"][data-line-type="start-control"]`)
-      controlLines.forEach((line) => {
-        line.setAttribute("x1", x.toString())
-        line.setAttribute("y1", y.toString())
-      })
-
-      // Update start point circle
-      const startCircles = svg.querySelectorAll(`circle[data-arrow-id="${arrow.id}"][data-point-type="start"]`)
-      startCircles.forEach((circle) => {
-        circle.setAttribute("cx", x.toString())
-        circle.setAttribute("cy", y.toString())
-      })
-
-      // Store the values to apply on mouse up
-      arrow._tempStartX = x
-      arrow._tempStartY = y
-    } else if (isDraggingPoint === "end") {
-      // Update the DOM elements directly
-      const pathElements = svg.querySelectorAll(`path[data-arrow-id="${arrow.id}"]`)
-      pathElements.forEach((path) => {
-        const d = path.getAttribute("d") || ""
-        // Replace the end coordinates in the path
-        const newD = d.replace(/(\s+[\d.]+\s+[\d.]+)$/, ` ${x} ${y}`)
-        path.setAttribute("d", newD)
-      })
-
-      // Update control point lines if they exist
-      const controlLines = svg.querySelectorAll(`line[data-arrow-id="${arrow.id}"][data-line-type="end-control"]`)
-      controlLines.forEach((line) => {
-        line.setAttribute("x1", x.toString())
-        line.setAttribute("y1", y.toString())
-      })
-
-      // Update end point circle
-      const endCircles = svg.querySelectorAll(`circle[data-arrow-id="${arrow.id}"][data-point-type="end"]`)
-      endCircles.forEach((circle) => {
-        circle.setAttribute("cx", x.toString())
-        circle.setAttribute("cy", y.toString())
-      })
-
-      // Update arrow head
-      const arrowHead = svg.querySelector(`polygon[data-arrow-id="${arrow.id}"]`)
-      if (arrowHead) {
-        // Calculate new arrow head points
-        const dx = x - arrow.controlX
-        const dy = y - arrow.controlY
-        const angle = Math.atan2(dy, dx)
-        const headLength = 15
-        const headAngle = Math.PI / 6
-        const headX1 = x - headLength * Math.cos(angle - headAngle)
-        const headY1 = y - headLength * Math.sin(angle - headAngle)
-        const headX2 = x - headLength * Math.cos(angle + headAngle)
-        const headY2 = y - headLength * Math.sin(angle + headAngle)
-        arrowHead.setAttribute("points", `${x},${y} ${headX1},${headY1} ${headX2},${headY2}`)
-      }
-
-      // Store the values to apply on mouse up
-      arrow._tempEndX = x
-      arrow._tempEndY = y
-    } else if (isDraggingPoint === "control") {
-      // Update the DOM elements directly
-      const pathElements = svg.querySelectorAll(`path[data-arrow-id="${arrow.id}"]`)
-      pathElements.forEach((path) => {
-        const d = path.getAttribute("d") || ""
-        // Replace the control point coordinates in the path
-        const newD = d.replace(/Q\s+([\d.]+)\s+([\d.]+)/, `Q ${x} ${y}`)
-        path.setAttribute("d", newD)
-      })
-
-      // Update control point lines
-      const controlLines = svg.querySelectorAll(`line[data-arrow-id="${arrow.id}"]`)
-      controlLines.forEach((line) => {
-        if (line.getAttribute("data-line-type")?.includes("control")) {
-          line.setAttribute("x2", x.toString())
-          line.setAttribute("y2", y.toString())
-        }
-      })
-
-      // Update control point circle
-      const controlCircles = svg.querySelectorAll(`circle[data-arrow-id="${arrow.id}"][data-point-type="control"]`)
-      controlCircles.forEach((circle) => {
-        circle.setAttribute("cx", x.toString())
-        circle.setAttribute("cy", y.toString())
-      })
-
-      // Update arrow head
-      const arrowHead = svg.querySelector(`polygon[data-arrow-id="${arrow.id}"]`)
-      if (arrowHead) {
-        // Calculate new arrow head points
-        const dx = arrow.endX - x
-        const dy = arrow.endY - y
-        const angle = Math.atan2(dy, dx)
-        const headLength = 15
-        const headAngle = Math.PI / 6
-        const headX1 = arrow.endX - headLength * Math.cos(angle - headAngle)
-        const headY1 = arrow.endY - headLength * Math.sin(angle - headAngle)
-        const headX2 = arrow.endX - headLength * Math.cos(angle + headAngle)
-        const headY2 = arrow.endY - headLength * Math.sin(angle + headAngle)
-        arrowHead.setAttribute("points", `${arrow.endX},${arrow.endY} ${headX1},${headY1} ${headX2},${headY2}`)
-      }
-
-      // Store the values to apply on mouse up
-      arrow._tempControlX = x
-      arrow._tempControlY = y
-    }
-  }
-
-  // Handle interaction end (mouseup or touchend)
-  const handleInteractionEnd = () => {
-    if (isDraggingPoint !== null) {
-      // Apply the stored temporary values to the actual state
-      const updates: Partial<Omit<ArrowType, "id">> = {}
-
-      if (isDraggingPoint === "start" && arrow._tempStartX !== undefined && arrow._tempStartY !== undefined) {
-        updates.startX = arrow._tempStartX
-        updates.startY = arrow._tempStartY
-        delete arrow._tempStartX
-        delete arrow._tempStartY
-      } else if (isDraggingPoint === "end" && arrow._tempEndX !== undefined && arrow._tempEndY !== undefined) {
-        updates.endX = arrow._tempEndX
-        updates.endY = arrow._tempEndY
-        delete arrow._tempEndX
-        delete arrow._tempEndY
-      } else if (
-        isDraggingPoint === "control" &&
-        arrow._tempControlX !== undefined &&
-        arrow._tempControlY !== undefined
-      ) {
-        updates.controlX = arrow._tempControlX
-        updates.controlY = arrow._tempControlY
-        delete arrow._tempControlX
-        delete arrow._tempControlY
-      }
-
-      // Only update the state once at the end of dragging
-      if (Object.keys(updates).length > 0) {
-        updateArrow(arrow.id, updates)
-        // Save to history only when the drag is complete
-        useEditorStore.getState().saveToHistory()
-      }
-
-      setIsDraggingPoint(null)
-
-      // Remove the dragging class
-      document.body.classList.remove("arrow-point-dragging")
-    }
-  }
-
-  // Add global mouse/touch up handler to ensure we stop dragging even if the pointer leaves the SVG
+  // Clean up any timers and event listeners
   useEffect(() => {
-    const handleGlobalInteractionEnd = () => {
-      if (isDraggingPoint !== null) {
-        handleInteractionEnd()
-      }
-    }
-
-    window.addEventListener("mouseup", handleGlobalInteractionEnd)
-    window.addEventListener("touchend", handleGlobalInteractionEnd)
-
     return () => {
-      window.removeEventListener("mouseup", handleGlobalInteractionEnd)
-      window.removeEventListener("touchend", handleGlobalInteractionEnd)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDraggingPoint])
-
-  // Generate the SVG path for the arrow
-  const getArrowPath = () => {
-    return `M ${arrow.startX} ${arrow.startY} Q ${arrow.controlX} ${arrow.controlY} ${arrow.endX} ${arrow.endY}`
-  }
-
-  // Calculate arrow head points
-  const getArrowHead = () => {
-    // For a quadratic bezier curve, the tangent at the end point is from the control point to the end point
-    const dx = arrow.endX - arrow.controlX
-    const dy = arrow.endY - arrow.controlY
-    const angle = Math.atan2(dy, dx)
-
-    // Arrow head properties
-    const headLength = 15
-    const headAngle = Math.PI / 6 // 30 degrees
-
-    // Calculate arrow head points
-    const headX1 = arrow.endX - headLength * Math.cos(angle - headAngle)
-    const headY1 = arrow.endY - headLength * Math.sin(angle - headAngle)
-    const headX2 = arrow.endX - headLength * Math.cos(angle + headAngle)
-    const headY2 = arrow.endY - headLength * Math.sin(angle + headAngle)
-
-    return `${arrow.endX},${arrow.endY} ${headX1},${headY1} ${headX2},${headY2}`
-  }
-
-  // Get stroke-dasharray based on arrow style
-  const getStrokeDashArray = () => {
-    switch (arrow.style) {
-      case "dashed":
-        return `${arrow.width * 3} ${arrow.width * 2}`
-      case "dotted":
-        return `${arrow.width} ${arrow.width * 2}`
-      default:
-        return "none"
-    }
-  }
-
-  // Determine the size of touch targets based on device
-  const touchTargetSize = isMobile ? 20 : 15
-  const controlPointSize = isMobile ? 8 : 6
+  }, [])
 
   return (
-    <g
+    <div
       ref={elementRef}
-      onClick={handleInteraction}
-      onTouchStart={isMobile ? handleInteraction : undefined}
-      className="cursor-pointer pointer-events-auto"
-      onMouseMove={handlePointerMove}
-      onTouchMove={isMobile ? handlePointerMove : undefined}
-      onMouseUp={handleInteractionEnd}
-      onTouchEnd={isMobile ? handleInteractionEnd : undefined}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
-      onPointerDown={(e) => e.stopPropagation()} // Prevent other handlers
-    >
-      {/* Arrow line with glow effect */}
-      <defs>
-        <filter id={`glow-${arrow.id}`} x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="3" result="blur" />
-          <feComposite in="SourceGraphic" in2="blur" operator="over" />
-        </filter>
-      </defs>
-
-      {/* Glow effect for selected arrows */}
-      {isSelected && (
-        <path
-          d={getArrowPath()}
-          stroke="white"
-          strokeWidth={arrow.width + 4}
-          strokeOpacity={0.5}
-          fill="none"
-          filter={`url(#glow-${arrow.id})`}
-          data-arrow-id={arrow.id}
-        />
+      className={cn(
+        "absolute cursor-move select-none",
+        isSelected ? "z-10" : "z-0",
+        isDragging ? "opacity-70" : ""
       )}
-
-      {/* Main arrow line */}
-      <path
-        d={getArrowPath()}
-        stroke={arrow.color}
-        strokeWidth={arrow.width}
-        strokeDasharray={getStrokeDashArray()}
-        fill="none"
-        className={cn(isSelected ? "stroke-[3]" : "", "pointer-events-auto")}
-        onClick={handleInteraction}
-        onTouchStart={isMobile ? handleInteraction : undefined}
-        data-arrow-id={arrow.id}
+      style={{
+        left: 0,
+        top: 0,
+        width: "100%",
+        height: "100%",
+        touchAction: "none",
+        pointerEvents: "none", // Make the container non-interactive
+      }}
+    >
+      {/* Arrow line */}
+      <div
+        className="absolute pointer-events-auto" // Make this element interactive
+        style={{
+          left: arrow.startX,
+          top: arrow.startY,
+          width: `${length}px`,
+          height: `${arrow.width}px`,
+          backgroundColor: arrow.color,
+          transform: `rotate(${angle}deg)`,
+          transformOrigin: "left center",
+          opacity: isDragging ? 0.7 : 1,
+        }}
+        onClick={handleClick}
+        onMouseDown={!isMobile ? handleMouseDown : undefined}
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
       />
 
       {/* Arrow head */}
-      <polygon
-        points={getArrowHead()}
-        fill={arrow.color}
-        filter={isSelected ? `url(#glow-${arrow.id})` : ""}
-        className="pointer-events-auto"
-        onClick={handleInteraction}
-        onTouchStart={isMobile ? handleInteraction : undefined}
-        data-arrow-id={arrow.id}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          left: arrow.endX,
+          top: arrow.endY,
+          width: 0,
+          height: 0,
+          borderLeft: `${10 + arrow.width}px solid ${arrow.color}`,
+          borderTop: `${5 + arrow.width / 2}px solid transparent`,
+          borderBottom: `${5 + arrow.width / 2}px solid transparent`,
+          transform: `rotate(${angle}deg) translateX(-50%)`,
+          transformOrigin: "center center",
+          opacity: isDragging ? 0.7 : 1,
+        }}
       />
 
-      {/* Control points - only show when selected */}
-      {isSelected && (
-        <>
-          {/* Start point */}
-          <g>
-            <circle
-              cx={arrow.startX}
-              cy={arrow.startY}
-              r={touchTargetSize}
-              fill="transparent"
-              className="cursor-move"
-              onMouseDown={(e) => handlePointInteractionStart(e, "start")}
-              onTouchStart={isMobile ? (e) => handlePointInteractionStart(e, "start") : undefined}
-            />
-            <circle
-              cx={arrow.startX}
-              cy={arrow.startY}
-              r={controlPointSize}
-              fill={arrow.color}
-              stroke="white"
-              strokeWidth={2}
-              className="cursor-move"
-              onMouseDown={(e) => handlePointInteractionStart(e, "start")}
-              onTouchStart={isMobile ? (e) => handlePointInteractionStart(e, "start") : undefined}
-              data-arrow-id={arrow.id}
-              data-point-type="start"
-            />
-          </g>
-
-          {/* End point */}
-          <g>
-            <circle
-              cx={arrow.endX}
-              cy={arrow.endY}
-              r={touchTargetSize}
-              fill="transparent"
-              className="cursor-move"
-              onMouseDown={(e) => handlePointInteractionStart(e, "end")}
-              onTouchStart={isMobile ? (e) => handlePointInteractionStart(e, "end") : undefined}
-            />
-            <circle
-              cx={arrow.endX}
-              cy={arrow.endY}
-              r={controlPointSize}
-              fill={arrow.color}
-              stroke="white"
-              strokeWidth={2}
-              className="cursor-move"
-              onMouseDown={(e) => handlePointInteractionStart(e, "end")}
-              onTouchStart={isMobile ? (e) => handlePointInteractionStart(e, "end") : undefined}
-              data-arrow-id={arrow.id}
-              data-point-type="end"
-            />
-          </g>
-
-          {/* Control point */}
-          <g>
-            {/* Line connecting control point to start and end */}
-            <line
-              x1={arrow.startX}
-              y1={arrow.startY}
-              x2={arrow.controlX}
-              y2={arrow.controlY}
-              stroke="rgba(255, 255, 255, 0.3)"
-              strokeWidth={1}
-              strokeDasharray="4 2"
-              data-arrow-id={arrow.id}
-              data-line-type="start-control"
-            />
-            <line
-              x1={arrow.endX}
-              y1={arrow.endY}
-              x2={arrow.controlX}
-              y2={arrow.controlY}
-              stroke="rgba(255, 255, 255, 0.3)"
-              strokeWidth={1}
-              strokeDasharray="4 2"
-              data-arrow-id={arrow.id}
-              data-line-type="end-control"
-            />
-
-            <circle
-              cx={arrow.controlX}
-              cy={arrow.controlY}
-              r={touchTargetSize}
-              fill="transparent"
-              className="cursor-move"
-              onMouseDown={(e) => handlePointInteractionStart(e, "control")}
-              onTouchStart={isMobile ? (e) => handlePointInteractionStart(e, "control") : undefined}
-            />
-            <circle
-              cx={arrow.controlX}
-              cy={arrow.controlY}
-              r={controlPointSize}
-              fill="#4CAF50"
-              stroke="white"
-              strokeWidth={2}
-              className="cursor-move"
-              onMouseDown={(e) => handlePointInteractionStart(e, "control")}
-              onTouchStart={isMobile ? (e) => handlePointInteractionStart(e, "control") : undefined}
-              data-arrow-id={arrow.id}
-              data-point-type="control"
-            />
-          </g>
-        </>
-      )}
-
-      {/* Delete button - only show when selected */}
+      {/* Start point handle (visible when selected) */}
       {isSelected && mode === "select" && (
-        <g onClick={handleDelete} onTouchStart={isMobile ? handleDelete : undefined}>
-          <circle
-            cx={arrow.startX}
-            cy={arrow.startY - 20}
-            r={isMobile ? 16 : 12}
-            fill="#FF3B30"
-            className="cursor-pointer"
-            filter="drop-shadow(0 0 2px rgba(0,0,0,0.5))"
-          />
-          <text
-            x={arrow.startX}
-            y={arrow.startY - 20}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="white"
-            fontSize={isMobile ? 18 : 14}
-            fontWeight="bold"
-          >
-            ×
-          </text>
-        </g>
+        <div
+          ref={startPointRef}
+          className={cn(
+            "absolute rounded-full bg-white border-2 pointer-events-auto",
+            isMobile ? "w-6 h-6" : "w-4 h-4",
+            isDragging && !isDraggingEnd ? "opacity-70" : ""
+          )}
+          style={{
+            left: arrow.startX - (isMobile ? 12 : 8),
+            top: arrow.startY - (isMobile ? 12 : 8),
+            borderColor: arrow.color,
+            cursor: "move",
+          }}
+          onMouseDown={!isMobile ? handleMouseDown : undefined}
+          onTouchStart={isMobile ? handleTouchStart : undefined}
+          onTouchMove={isMobile ? handleTouchMove : undefined}
+          onTouchEnd={isMobile ? handleTouchEnd : undefined}
+        />
       )}
-    </g>
+
+      {/* End point handle (visible when selected) */}
+      {isSelected && mode === "select" && (
+        <div
+          ref={endPointRef}
+          className={cn(
+            "absolute rounded-full bg-white border-2 pointer-events-auto",
+            isMobile ? "w-6 h-6" : "w-4 h-4",
+            isDragging && isDraggingEnd ? "opacity-70" : ""
+          )}
+          style={{
+            left: arrow.endX - (isMobile ? 12 : 8),
+            top: arrow.endY - (isMobile ? 12 : 8),
+            borderColor: arrow.color,
+            cursor: "move",
+          }}
+          onMouseDown={!isMobile ? handleEndPointMouseDown : undefined}
+          onTouchStart={isMobile ? handleEndPointTouchStart : undefined}
+          onTouchMove={isMobile ? handleTouchMove : undefined}
+          onTouchEnd={isMobile ? handleTouchEnd : undefined}
+        />
+      )}
+
+      {/* Delete button (visible when selected) */}
+      {isSelected && mode === "select" && !isDragging && (
+        <button
+          onClick={handleDelete}
+          onTouchStart={isMobile ? handleDelete : undefined}
+          className={cn(
+            "absolute bg-red-600 text-white rounded-full flex items-center justify-center text-xs shadow-lg pointer-events-auto",
+            isMobile ? "w-8 h-8 text-base" : "w-6 h-6"
+          )}
+          style={{
+            left: (arrow.startX + arrow.endX) / 2 - (isMobile ? 16 : 12),
+            top: (arrow.startY + arrow.endY) / 2 - (isMobile ? 16 : 12),
+          }}
+        >
+          ×
+        </button>
+      )}
+    </div>
   )
 }
 

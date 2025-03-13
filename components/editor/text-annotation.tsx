@@ -1,8 +1,7 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 import { useRef, useState, useEffect } from "react"
-import { useDrag } from "react-dnd"
 import { type TextAnnotationType, useEditorStore } from "@/store/useEditorStore"
 import { cn } from "@/lib/utils"
 import { useMobile } from "@/hooks/use-mobile"
@@ -10,38 +9,122 @@ import { useMobile } from "@/hooks/use-mobile"
 interface TextAnnotationProps {
   annotation: TextAnnotationType
   onDragStart?: () => void
+  onDragEnd?: () => void
 }
 
-export function TextAnnotation({ annotation, onDragStart }: TextAnnotationProps) {
+export function TextAnnotation({ annotation, onDragStart, onDragEnd }: TextAnnotationProps) {
   const { updateText, removeText, selectElement, selectedElementId, mode } = useEditorStore()
   const [isEditing, setIsEditing] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const elementRef = useRef<HTMLDivElement>(null)
+  const dragStartPosRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
   const isMobile = useMobile()
 
   // For mobile long press
   const longPressTimer = useRef<NodeJS.Timeout | null>(null)
+  const touchStartTimeRef = useRef<number>(0)
+  const touchMoveThresholdRef = useRef<boolean>(false)
 
   const isSelected = selectedElementId === annotation.id
 
-  const [{ isDragging }, drag, preview] = useDrag(
-    () => ({
-      type: "TEXT",
-      item: () => {
-        if (onDragStart) onDragStart()
-        // Automatically switch to select mode when dragging starts
-        if (mode !== "select") {
-          useEditorStore.setState({ mode: "select" })
-        }
-        return { id: annotation.id, type: "text" }
-      },
-      collect: (monitor) => ({
-        isDragging: !!monitor.isDragging(),
-      }),
-      // Allow dragging in any mode
-      canDrag: true,
-    }),
-    [annotation.id, mode, onDragStart],
-  )
+  // Track drag start position and handle events
+  const handleDragStart = (clientX: number, clientY: number) => {
+    if (!elementRef.current) return
+
+    // Auto-switch to select mode when dragging starts
+    if (mode !== "select") {
+      useEditorStore.setState({ mode: "select" })
+    }
+
+    // Select this annotation
+    selectElement(annotation.id)
+
+    // Calculate the current element position relative to the board
+    dragStartPosRef.current = {
+      x: annotation.x,
+      y: annotation.y,
+      clientX,
+      clientY
+    }
+
+    setIsDragging(true)
+    
+    // Haptic feedback for drag start
+    if (isMobile && window.navigator && window.navigator.vibrate) {
+      try {
+        window.navigator.vibrate(30)
+      } catch (err) {
+        console.warn("Vibration not supported", err)
+      }
+    }
+
+    // Notify parent 
+    if (onDragStart) onDragStart()
+
+    // Prevent text selection during drag
+    document.body.style.userSelect = 'none'
+    document.body.style.webkitUserSelect = 'none'
+  }
+
+  // Handle mouse move during drag
+  const handleDragMove = (clientX: number, clientY: number) => {
+    if (!isDragging || !dragStartPosRef.current) return
+
+    const deltaX = clientX - dragStartPosRef.current.clientX
+    const deltaY = clientY - dragStartPosRef.current.clientY
+
+    // Update annotation position directly
+    updateText(annotation.id, {
+      x: dragStartPosRef.current.x + deltaX,
+      y: dragStartPosRef.current.y + deltaY
+    })
+  }
+
+  // Handle end of drag operation
+  const handleDragEnd = () => {
+    if (!isDragging) return
+
+    setIsDragging(false)
+    dragStartPosRef.current = null
+
+    // Notify parent
+    if (onDragEnd) onDragEnd()
+
+    // Re-enable text selection
+    document.body.style.userSelect = ''
+    document.body.style.webkitUserSelect = ''
+  }
+
+  // Mouse event handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only initiate drag on left mouse button
+    if (e.button !== 0) return
+    
+    // Don't start drag if clicked on a button
+    if ((e.target as HTMLElement).tagName === 'BUTTON') return
+
+    e.stopPropagation()
+    handleDragStart(e.clientX, e.clientY)
+
+    // Add global event listeners for mouse move and up
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    e.preventDefault()
+    handleDragMove(e.clientX, e.clientY)
+  }
+
+  const handleMouseUp = (e: MouseEvent) => {
+    e.preventDefault()
+    handleDragEnd()
+    
+    // Remove global event listeners
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -59,25 +142,88 @@ export function TextAnnotation({ annotation, onDragStart }: TextAnnotationProps)
   // For mobile, use long press instead of double click
   const handleTouchStart = (e: React.TouchEvent) => {
     e.stopPropagation()
+    
+    // Reset the threshold flag
+    touchMoveThresholdRef.current = false
+    
+    // Store initial touch time for differentiating between tap and long press
+    touchStartTimeRef.current = Date.now()
+    
+    // Get the first touch point
+    const touch = e.touches[0]
 
     // First, select the text
     handleClick(e)
 
     // Set up long press timer
     longPressTimer.current = setTimeout(() => {
-      // Auto-switch to select mode for editing
-      if (mode !== "select") {
-        useEditorStore.setState({ mode: "select" })
+      // Only activate long press if user hasn't started dragging
+      if (!touchMoveThresholdRef.current) {
+        clearLongPressTimer()
+        
+        // Auto-switch to select mode for editing
+        if (mode !== "select") {
+          useEditorStore.setState({ mode: "select" })
+        }
+        
+        setIsEditing(true)
+        
+        // Add haptic feedback for edit activation
+        if (window.navigator && window.navigator.vibrate) {
+          try {
+            window.navigator.vibrate([30, 30, 80])
+          } catch (err) {
+            console.warn("Vibration not supported", err)
+          }
+        }
+        
+        setTimeout(() => {
+          textareaRef.current?.focus()
+          textareaRef.current?.select()
+        }, 0)
       }
-      setIsEditing(true)
-      setTimeout(() => {
-        textareaRef.current?.focus()
-        textareaRef.current?.select()
-      }, 0)
     }, 500) // 500ms long press
   }
 
-  const handleTouchEnd = () => {
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // Prevent scrolling
+    e.preventDefault()
+    
+    // If the user is editing, don't handle drag
+    if (isEditing) return
+    
+    const touch = e.touches[0]
+    
+    // If we haven't started dragging yet and the finger moved more than a threshold
+    if (!touchMoveThresholdRef.current && dragStartPosRef.current === null) {
+      const touchTime = Date.now() - touchStartTimeRef.current
+      
+      // If touched briefly (not a long press) and moved, start dragging
+      if (touchTime < 500) {
+        touchMoveThresholdRef.current = true
+        clearLongPressTimer()
+        handleDragStart(touch.clientX, touch.clientY)
+      }
+    }
+    
+    // Continue drag movement if we've started dragging
+    if (isDragging) {
+      handleDragMove(touch.clientX, touch.clientY)
+    }
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation()
+    clearLongPressTimer()
+    
+    // If we were dragging, end the drag operation
+    if (isDragging) {
+      handleDragEnd()
+    }
+  }
+  
+  // Cancel long press timer when needed
+  const clearLongPressTimer = () => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current)
       longPressTimer.current = null
@@ -111,20 +257,25 @@ export function TextAnnotation({ annotation, onDragStart }: TextAnnotationProps)
   const handleDelete = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation()
     removeText(annotation.id)
-  }
-
-  // Clean up any timers
-  useEffect(() => {
-    return () => {
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current)
+    
+    // Add haptic feedback for deletion
+    if (isMobile && window.navigator && window.navigator.vibrate) {
+      try {
+        window.navigator.vibrate([30, 50, 80])
+      } catch (err) {
+        console.warn("Vibration not supported", err)
       }
     }
-  }, [])
-
-  if (isDragging) {
-    return null
   }
+
+  // Clean up any timers and event listeners
+  useEffect(() => {
+    return () => {
+      clearLongPressTimer()
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
 
   // Get text style properties with defaults
   const textStyles = {
@@ -137,15 +288,21 @@ export function TextAnnotation({ annotation, onDragStart }: TextAnnotationProps)
 
   return (
     <div
-      ref={drag}
-      className={cn("absolute cursor-move select-none max-w-[200px]", isSelected ? "z-10" : "z-0")}
+      ref={elementRef}
+      className={cn(
+        "absolute cursor-move select-none max-w-[200px]", 
+        isSelected ? "z-10" : "z-0",
+        isDragging ? "opacity-70" : ""
+      )}
       style={{
         left: annotation.x,
         top: annotation.y,
         touchAction: "none",
       }}
       onClick={handleClick}
+      onMouseDown={!isMobile ? handleMouseDown : undefined}
       onTouchStart={isMobile ? handleTouchStart : undefined}
+      onTouchMove={isMobile ? handleTouchMove : undefined}
       onTouchEnd={isMobile ? handleTouchEnd : undefined}
       onDoubleClick={handleDoubleClick}
     >
@@ -179,7 +336,7 @@ export function TextAnnotation({ annotation, onDragStart }: TextAnnotationProps)
         </div>
       )}
 
-      {isSelected && mode === "select" && (
+      {isSelected && mode === "select" && !isDragging && (
         <button
           onClick={handleDelete}
           onTouchStart={isMobile ? handleDelete : undefined}
