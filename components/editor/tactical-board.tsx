@@ -29,8 +29,12 @@ const DndBackendProvider = ({ children }: { children: React.ReactNode }) => {
       backend={isMobile ? TouchBackend : HTML5Backend} 
       options={isMobile ? {
         enableMouseEvents: true,
-        delayTouchStart: 0, // Reduced delay for better iPad responsiveness
-        ignoreContextMenu: true
+        delayTouchStart: 100, // Increased delay for better compatibility
+        ignoreContextMenu: true,
+        touchSlop: 10, // More tolerance for touch movement
+        enableTouchEvents: true,
+        enableKeyboardEvents: true,
+        enableHoverOutsideTarget: true
       } : undefined}
     >
       {children}
@@ -41,6 +45,7 @@ const DndBackendProvider = ({ children }: { children: React.ReactNode }) => {
 function TacticalBoardInner() {
   const boardRef = useRef<HTMLDivElement | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const dropRef = useRef<HTMLDivElement | null>(null)
   const [isDraggingElement, setIsDraggingElement] = useState(false)
   const [hoverPosition, setHoverPosition] = useState<{x: number, y: number} | null>(null)
   const isMobile = useMobile()
@@ -107,6 +112,13 @@ function TacticalBoardInner() {
     [players, textAnnotations, updatePlayer, updateText],
   )
 
+  // Connect the drop ref
+  useEffect(() => {
+    if (dropRef.current && typeof drop === 'function') {
+      drop(dropRef.current)
+    }
+  }, [drop])
+
   // Get coordinates from either mouse or touch event
   const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
     if (!boardRef.current) return { x: 0, y: 0 }
@@ -114,7 +126,7 @@ function TacticalBoardInner() {
     const rect = boardRef.current.getBoundingClientRect()
 
     // Handle touch event
-    if ("touches" in e) {
+    if ("touches" in e && e.touches.length > 0) {
       const touch = e.touches[0]
       return {
         x: touch.clientX - rect.left,
@@ -123,10 +135,15 @@ function TacticalBoardInner() {
     }
 
     // Handle mouse event
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+    if ("clientX" in e) {
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      }
     }
+
+    // Default fallback
+    return { x: 0, y: 0 }
   }
 
   // Handle mouse move for showing placement previews
@@ -155,14 +172,22 @@ function TacticalBoardInner() {
     if (mode === "player") {
       addPlayer(x, y)
       // Add haptic feedback for touch devices if available
-      if (isMobile && window.navigator.vibrate) {
-        window.navigator.vibrate(50)
+      if (isMobile && window.navigator && window.navigator.vibrate) {
+        try {
+          window.navigator.vibrate(50)
+        } catch (err) {
+          console.warn("Vibration not supported", err)
+        }
       }
     } else if (mode === "text") {
       addText(x, y, "Text")
       // Add haptic feedback for touch devices if available
-      if (isMobile && window.navigator.vibrate) {
-        window.navigator.vibrate(50)
+      if (isMobile && window.navigator && window.navigator.vibrate) {
+        try {
+          window.navigator.vibrate(50)
+        } catch (err) {
+          console.warn("Vibration not supported", err)
+        }
       }
     } else if (mode === "arrow") {
       // Handle arrow drawing state
@@ -176,8 +201,12 @@ function TacticalBoardInner() {
         // Complete the arrow
         completeArrow()
         // Add haptic feedback for touch devices if available
-        if (isMobile && window.navigator.vibrate) {
-          window.navigator.vibrate(50)
+        if (isMobile && window.navigator && window.navigator.vibrate) {
+          try {
+            window.navigator.vibrate(50)
+          } catch (err) {
+            console.warn("Vibration not supported", err)
+          }
         }
       }
     } else if (mode === "select") {
@@ -262,8 +291,7 @@ function TacticalBoardInner() {
       ref={(node) => {
         // Update our local ref first
         boardRef.current = node;
-        // Apply the drop ref without returning its result
-        drop(node);
+        dropRef.current = node;
       }}
       className={`relative touch-none transition-all duration-150 ${getToolCursor()} ${isDraggingElement ? 'cursor-grabbing' : ''} ${mode === 'select' ? 'cursor-pointer' : ''}`}
       onClick={handleBoardInteraction}

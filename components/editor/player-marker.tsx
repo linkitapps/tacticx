@@ -19,6 +19,7 @@ export function PlayerMarker({ player, onDragStart }: PlayerMarkerProps) {
   const [isHovering, setIsHovering] = useState(false)
   const [isDragHint, setIsDragHint] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const elementRef = useRef<HTMLDivElement>(null)
   const isMobile = useMobile()
 
   const isSelected = selectedElementId === player.id
@@ -43,10 +44,17 @@ export function PlayerMarker({ player, onDragStart }: PlayerMarkerProps) {
     [player.id, mode, onDragStart],
   )
 
+  // Connect the drag ref to our element ref
+  useEffect(() => {
+    if (elementRef.current) {
+      drag(elementRef.current)
+    }
+  }, [drag, elementRef])
+
   const handleInteraction = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation()
     // Add subtle haptic feedback for touch devices
-    if (isMobile && window.navigator.vibrate) {
+    if (isMobile && window.navigator && window.navigator.vibrate) {
       window.navigator.vibrate(30)
     }
     // Auto-switch to select mode when clicking a player
@@ -86,7 +94,7 @@ export function PlayerMarker({ player, onDragStart }: PlayerMarkerProps) {
       }
       setIsEditing(true)
       // Add haptic feedback for edit activation
-      if (window.navigator.vibrate) {
+      if (window.navigator && window.navigator.vibrate) {
         window.navigator.vibrate([30, 30, 80])
       }
       setTimeout(() => {
@@ -122,7 +130,7 @@ export function PlayerMarker({ player, onDragStart }: PlayerMarkerProps) {
     if (window.confirm("Are you sure you want to delete this player?")) {
       removePlayer(player.id)
       // Add haptic feedback for deletion
-      if (isMobile && window.navigator.vibrate) {
+      if (isMobile && window.navigator && window.navigator.vibrate) {
         window.navigator.vibrate([30, 50, 80])
       }
     }
@@ -165,7 +173,7 @@ export function PlayerMarker({ player, onDragStart }: PlayerMarkerProps) {
 
   return (
     <div
-      ref={drag}
+      ref={elementRef}
       className={cn(
         "absolute cursor-move select-none transition-transform duration-200 ease-out",
         isSelected ? "z-20 scale-110" : "z-10",
