@@ -1,6 +1,6 @@
 ---
 description: Apply these rules when creating the project
-globs:
+globs: 
 alwaysApply: true
 ---
 ## Project Overview
@@ -129,3 +129,5 @@ alwaysApply: true
 *   Maintain consistency in file naming and directory structures across all components and pages.
 *   Reflect similar routing principles for alternative frameworks (e.g., React Router, SvelteKit) in future projects without mixing version patterns.
 *   Follow the prescribed best practices for each technology in the tech stack to ensure optimal performance, security, and maintainability.
+*   do not add any new tools or funtionality unless i ask for it.
+

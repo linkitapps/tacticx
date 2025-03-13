@@ -1,20 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { TacticalBoard } from "@/components/editor/tactical-board"
 import { EditorToolbar } from "@/components/editor/toolbar"
-import { PlayerPropertiesPanel } from "@/components/editor/player-properties-panel"
-import { ArrowPropertiesPanel } from "@/components/editor/arrow-properties-panel"
-import { FormationSelector } from "@/components/editor/formation-selector"
-import { TacticSettings } from "@/components/editor/tactic-settings"
 import { useEditorStore } from "@/store/useEditorStore"
 import { useMobile } from "@/hooks/use-mobile"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Settings, PanelLeft, PanelRight } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-// Import the TextPropertiesPanel
-import { TextPropertiesPanel } from "@/components/editor/text-properties-panel"
+import { Undo, Redo } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 // Detect if we're on an iPad to apply special handling
 const isIpad = typeof navigator !== 'undefined' && 
@@ -22,220 +15,213 @@ const isIpad = typeof navigator !== 'undefined' &&
   (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 
 export default function EditorPage() {
-  // If on iPad, use our special handling
+  // Apply iPad-specific fixes if needed
   useEffect(() => {
     if (isIpad) {
-      // Apply iPad-specific settings to fix the manager.actions error
-      // This patches the issue where manager.actions is not a function in manager.getactions
-      const applyIpadFix = () => {
-        // Prevent the specific error from breaking the app
-        window.addEventListener('error', (event) => {
-          if (event.message && event.message.includes('manager.actions is not a function')) {
-            event.preventDefault();
-            console.warn('Prevented iPad DND error: manager.actions is not a function');
-          }
-        });
-      };
-      
-      applyIpadFix();
+      window.addEventListener('error', (event) => {
+        if (event.message && event.message.includes('manager.actions is not a function')) {
+          event.preventDefault();
+          console.warn('Prevented iPad DND error: manager.actions is not a function');
+        }
+      });
     }
   }, []);
 
-  const { selectedElementId, arrows, players, setCanvasDimensions, textAnnotations } = useEditorStore()
-  const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null)
-  const isMobile = useMobile()
-  const [showLeftSidebar, setShowLeftSidebar] = useState(!isMobile)
-  const [showRightSidebar, setShowRightSidebar] = useState(!isMobile)
+  const { 
+    selectedElementId,
+    setCanvasDimensions,
+    mode,
+    arrowDrawingState,
+    cancelArrow,
+    selectElement,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    saveTactic,
+  } = useEditorStore();
+  
+  const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
+  const isMobile = useMobile();
+  const [isSaving, setIsSaving] = useState(false);
+  const dimensionsInitializedRef = useRef(false);
+  
+  // Handle save action
+  const handleSave = async () => {
+    if (isSaving) return;
+    
+    try {
+      setIsSaving(true);
+      const id = await saveTactic();
+      console.log("Tactic saved with ID:", id);
+      // Show success message or feedback here
+    } catch (error) {
+      console.error("Error saving tactic:", error);
+      // Show error message here
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-  // Determine which properties panel to show based on the selected element
-  const selectedArrow = arrows.find((arrow) => arrow.id === selectedElementId)
-  const selectedPlayer = players.find((player) => player.id === selectedElementId)
-  const selectedText = textAnnotations.find((text) => text.id === selectedElementId)
-
-  // Update canvas dimensions when the container size changes
+  // Add keyboard shortcut handlers
   useEffect(() => {
-    if (!containerRef) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input or textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
 
-    const updateDimensions = () => {
-      const { width, height } = containerRef.getBoundingClientRect()
-      setCanvasDimensions(width, height)
+      // Handle ESC key to cancel actions
+      if (e.key === 'Escape') {
+        if (arrowDrawingState !== 'idle') {
+          cancelArrow()
+        } else {
+          // Only clear selection, keep current tool
+          selectElement(null)
+        }
+        return
+      }
+
+      // Undo/Redo shortcuts
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          if (canRedo) redo();
+        } else {
+          if (canUndo) undo();
+        }
+        e.preventDefault();
+        return;
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        if (canRedo) redo();
+        e.preventDefault();
+        return;
+      }
+
+      // Skip other modifier key combinations
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+        return
+      }
+
+      // Tool shortcuts (handled by EditorStore)
     }
 
-    // Initial update
-    updateDimensions()
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [arrowDrawingState, cancelArrow, selectElement, undo, redo, canUndo, canRedo])
 
-    // Update on resize
-    const resizeObserver = new ResizeObserver(updateDimensions)
-    resizeObserver.observe(containerRef)
+  // Update the container ref handling in the EditorPage component
+  useEffect(() => {
+    if (!containerRef) return;
 
-    return () => {
-      resizeObserver.disconnect()
+    // Set absolute minimum dimensions to ensure visibility
+    const MIN_WIDTH = isMobile ? 320 : 640;
+    const MIN_HEIGHT = isMobile ? 400 : 480;
+    
+    // Only initialize dimensions once to prevent update loops
+    if (dimensionsInitializedRef.current) {
+      return;
     }
-  }, [containerRef, setCanvasDimensions])
 
-  // For mobile, use sheets instead of sidebars
-  if (isMobile) {
-    return (
-      <div className="flex flex-col h-screen bg-[#0D1117]">
-        <div className="p-2 bg-[#161B22] border-b border-[#30363D]">
-          <EditorToolbar />
-        </div>
+    const initializeDimensions = () => {
+      const rect = containerRef.getBoundingClientRect();
+      
+      // Only proceed if we have reasonable dimensions
+      if (rect.width < 100 || rect.height < 100) {
+        console.warn("Container has invalid initial dimensions, using minimums");
+        setCanvasDimensions(MIN_WIDTH, MIN_HEIGHT);
+        return;
+      }
+      
+      // Apply minimum dimensions if needed
+      const width = Math.max(rect.width, MIN_WIDTH);
+      const height = Math.max(rect.height, MIN_HEIGHT);
+      
+      setCanvasDimensions(width, height);
+      dimensionsInitializedRef.current = true;
+    };
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Main content */}
-          <div className="flex-1 overflow-hidden" ref={setContainerRef}>
-            <TacticalBoard />
-          </div>
-        </div>
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      initializeDimensions();
+      
+      // On mobile, recalculate dimensions once when device orientation changes
+      if (isMobile) {
+        const handleOrientationChange = () => {
+          dimensionsInitializedRef.current = false; // Allow one update after orientation change
+          
+          // Wait for orientation change to complete
+          setTimeout(() => {
+            initializeDimensions();
+          }, 500);
+        };
+        
+        window.addEventListener('orientationchange', handleOrientationChange);
+        return () => window.removeEventListener('orientationchange', handleOrientationChange);
+      }
+    });
+  }, [containerRef, setCanvasDimensions, isMobile]);
 
-        {/* Mobile bottom sheets */}
-        <div className="flex justify-between p-2 bg-[#161B22] border-t border-[#30363D]">
-          {/* Formations & Settings Sheet */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-[#21262D] border-[#30363D] hover:bg-[#30363D] hover:border-[#6E7681]"
-              >
-                <PanelLeft className="h-4 w-4 mr-2" />
-                Settings
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="bg-[#161B22] border-r border-[#30363D] w-full sm:max-w-md">
-              <SheetHeader>
-                <SheetTitle className="text-white">Tactic Settings</SheetTitle>
-              </SheetHeader>
-              <div className="space-y-6 mt-6">
-                <FormationSelector />
-                <TacticSettings />
-              </div>
-            </SheetContent>
-          </Sheet>
-
-          {/* Properties Sheet - only show if something is selected */}
-          {(selectedPlayer || selectedArrow || selectedText) && (
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-[#21262D] border-[#30363D] hover:bg-[#30363D] hover:border-[#6E7681]"
-                >
-                  <PanelRight className="h-4 w-4 mr-2" />
-                  Properties
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="bg-[#161B22] border-l border-[#30363D] w-full sm:max-w-md">
-                <SheetHeader>
-                  <SheetTitle className="text-white">
-                    {selectedPlayer ? "Player Properties" : selectedArrow ? "Arrow Properties" : "Text Properties"}
-                  </SheetTitle>
-                </SheetHeader>
-                <div className="mt-6">
-                  {selectedPlayer && <PlayerPropertiesPanel />}
-                  {selectedArrow && <ArrowPropertiesPanel />}
-                  {selectedText && <TextPropertiesPanel />}
-                </div>
-              </SheetContent>
-            </Sheet>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // Desktop layout with collapsible sidebars
+  // UNIFIED LAYOUT for mobile and desktop
   return (
-    <div className="flex flex-col h-screen bg-[#0D1117]">
-      <div className="p-3 bg-[#161B22] border-b border-[#30363D] shadow-sm">
+    <div className="flex flex-col h-screen bg-[#0D1117] overflow-hidden">
+      {/* Toolbar row */}
+      <div className="bg-[#0D1117] border-b border-[#30363D] py-2 px-3">
         <EditorToolbar />
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar */}
-        <div
-          className={cn(
-            "transition-all duration-300 ease-in-out bg-[#161B22] border-r border-[#30363D] overflow-y-auto",
-            showLeftSidebar ? "w-72 opacity-100" : "w-0 opacity-0",
-          )}
+      {/* Main content area - full width */}
+      <div className="flex-1 bg-[#0D1117] relative overflow-hidden"> 
+        <div 
+          className="w-full h-full"
+          ref={setContainerRef}
+          style={{ 
+            minHeight: isMobile ? '400px' : '480px',
+            minWidth: isMobile ? '320px' : '640px',
+          }}
         >
-          {showLeftSidebar && (
-            <div className="p-4 space-y-6">
-              <FormationSelector />
-              <TacticSettings />
-            </div>
-          )}
-        </div>
-
-        {/* Left sidebar toggle button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowLeftSidebar(!showLeftSidebar)}
-          className={cn(
-            "absolute left-0 top-1/2 transform -translate-y-1/2 z-10 bg-[#161B22] border border-[#30363D] rounded-r-md rounded-l-none h-20 transition-all duration-300",
-            showLeftSidebar ? "left-72" : "left-0",
-          )}
-        >
-          {showLeftSidebar ? (
-            <ChevronLeft className="h-5 w-5 text-gray-300" />
-          ) : (
-            <ChevronRight className="h-5 w-5 text-gray-300" />
-          )}
-        </Button>
-
-        {/* Main content */}
-        <div className="flex-1 overflow-hidden relative" ref={setContainerRef}>
           <TacticalBoard />
-
-          {/* Overlay when no element is selected */}
-          {!selectedPlayer && !selectedArrow && showRightSidebar && (
-            <div className="absolute inset-0 bg-gradient-to-l from-[#161B22]/10 to-transparent pointer-events-none" />
-          )}
         </div>
+      </div>
 
-        {/* Right sidebar toggle button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowRightSidebar(!showRightSidebar)}
-          className={cn(
-            "absolute right-0 top-1/2 transform -translate-y-1/2 z-10 bg-[#161B22] border border-[#30363D] rounded-l-md rounded-r-none h-20 transition-all duration-300",
-            showRightSidebar ? "right-72" : "right-0",
-          )}
-        >
-          {showRightSidebar ? (
-            <ChevronRight className="h-5 w-5 text-gray-300" />
-          ) : (
-            <ChevronLeft className="h-5 w-5 text-gray-300" />
-          )}
-        </Button>
-
-        {/* Right sidebar - Properties panel */}
-        <div
-          className={cn(
-            "transition-all duration-300 ease-in-out bg-[#161B22] border-l border-[#30363D] overflow-y-auto",
-            showRightSidebar ? "w-72 opacity-100" : "w-0 opacity-0",
-          )}
-        >
-          {showRightSidebar && (
-            <div className="p-4">
-              {selectedPlayer && <PlayerPropertiesPanel />}
-              {selectedArrow && <ArrowPropertiesPanel />}
-              {selectedText && <TextPropertiesPanel />}
-              {!selectedPlayer && !selectedArrow && !selectedText && (
-                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-center text-gray-400 p-6">
-                  <Settings className="h-12 w-12 mb-4 text-gray-500 opacity-50" />
-                  <h3 className="text-lg font-medium text-gray-300 mb-2">No Element Selected</h3>
-                  <p className="text-sm">Select a player, arrow, or text on the field to edit its properties</p>
-                </div>
-              )}
+      {/* Status bar with context-sensitive tips and undo/redo for mobile */}
+      <div className="bg-[#161B22] border-t border-[#30363D] py-2 px-3 text-xs text-gray-400">
+        <div className="flex justify-between items-center">
+          <div>
+            {mode === 'select' && 'Tap elements to select, drag to move'}
+            {mode === 'player' && 'Tap on field to place players'}
+            {mode === 'arrow' && 'Tap to start arrow, tap again to end'}
+            {mode === 'text' && 'Tap on field to add text'}
+          </div>
+          
+          {/* History controls for mobile */}
+          {isMobile && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-gray-400 hover:text-white rounded-md"
+                disabled={!canUndo}
+                onClick={undo}
+              >
+                <Undo className="h-3.5 w-3.5" />
+              </Button>
+              
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-gray-400 hover:text-white rounded-md"
+                disabled={!canRedo}
+                onClick={redo}
+              >
+                <Redo className="h-3.5 w-3.5" />
+              </Button>
             </div>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }
 

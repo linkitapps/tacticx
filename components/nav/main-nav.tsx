@@ -38,12 +38,7 @@ export function MainNav() {
       href: "/editor",
       label: "Editor",
       active: pathname === "/editor",
-    },
-    {
-      href: "/docs",
-      label: "Docs",
-      active: pathname === "/docs",
-    },
+    }
   ]
 
   const authRoutes = user
@@ -59,18 +54,7 @@ export function MainNav() {
           active: pathname === "/profile",
         },
       ]
-    : [
-        {
-          href: "/login",
-          label: "Sign In",
-          active: pathname === "/login",
-        },
-        {
-          href: "/signup",
-          label: "Sign Up",
-          active: pathname === "/signup",
-        },
-      ]
+    : []
 
   return (
     <nav className="border-b bg-background">

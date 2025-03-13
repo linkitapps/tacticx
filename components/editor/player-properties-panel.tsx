@@ -8,13 +8,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useEditorStore } from "@/store/useEditorStore"
-import { User, Type, Hash, Trash2, Save, Palette } from "lucide-react"
+import { User, Type, Hash, Trash2, Save, Users } from "lucide-react"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 
 export function PlayerPropertiesPanel() {
-  const { players, selectedElementId, updatePlayer, removePlayer } = useEditorStore()
+  const { 
+    players, 
+    selectedElementId, 
+    updatePlayer, 
+    removePlayer, 
+    homeTeamColor, 
+    awayTeamColor 
+  } = useEditorStore()
+  
   const [number, setNumber] = useState<number>(1)
   const [name, setName] = useState<string>("")
-  const [color, setColor] = useState<string>("#6366F1")
+  const [team, setTeam] = useState<"home" | "away">("home")
   const [hasChanges, setHasChanges] = useState(false)
 
   // Find the selected player
@@ -25,7 +34,7 @@ export function PlayerPropertiesPanel() {
     if (selectedPlayer) {
       setNumber(selectedPlayer.number)
       setName(selectedPlayer.label || "")
-      setColor(selectedPlayer.color)
+      setTeam(selectedPlayer.team)
       setHasChanges(false)
     }
   }, [selectedPlayer])
@@ -48,8 +57,8 @@ export function PlayerPropertiesPanel() {
     setHasChanges(true)
   }
 
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setColor(e.target.value)
+  const handleTeamChange = (value: "home" | "away") => {
+    setTeam(value)
     setHasChanges(true)
   }
 
@@ -58,7 +67,8 @@ export function PlayerPropertiesPanel() {
       updatePlayer(selectedPlayer.id, {
         number,
         label: name,
-        color,
+        team,
+        color: team === "home" ? homeTeamColor : awayTeamColor,
       })
       setHasChanges(false)
     }
@@ -69,6 +79,9 @@ export function PlayerPropertiesPanel() {
       removePlayer(selectedPlayer.id)
     }
   }
+
+  // Get the current color based on team
+  const currentColor = team === "home" ? homeTeamColor : awayTeamColor
 
   return (
     <div className="space-y-5">
@@ -92,10 +105,10 @@ export function PlayerPropertiesPanel() {
         {/* Player preview */}
         <div className="flex items-center justify-center mb-2">
           <div
-            className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold"
+            className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-white"
             style={{
-              backgroundColor: color,
-              boxShadow: `0 0 0 2px #30363D, 0 0 10px 2px ${color}40`,
+              backgroundColor: currentColor,
+              boxShadow: `0 0 0 2px #30363D, 0 0 10px 2px ${currentColor}40`,
             }}
           >
             {number}
@@ -135,20 +148,40 @@ export function PlayerPropertiesPanel() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="player-color" className="text-xs flex items-center gap-1.5 text-gray-300">
-              <Palette className="h-3.5 w-3.5 text-gray-400" />
-              Player Color
+            <Label className="text-xs flex items-center gap-1.5 text-gray-300">
+              <Users className="h-3.5 w-3.5 text-gray-400" />
+              Team
             </Label>
-            <div className="flex gap-2">
-              <div className="w-9 h-9 rounded border border-[#30363D]" style={{ backgroundColor: color }} />
-              <Input
-                id="player-color"
-                type="color"
-                value={color}
-                onChange={handleColorChange}
-                className="h-9 flex-1 bg-[#21262D] border-[#30363D] focus:border-primary"
-              />
-            </div>
+            <RadioGroup value={team} onValueChange={handleTeamChange} className="flex gap-4">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem 
+                  value="home" 
+                  id="team-home" 
+                  className="border-[#30363D]"
+                />
+                <div className="flex items-center gap-1.5">
+                  <div 
+                    className="w-4 h-4 rounded-full"
+                    style={{ backgroundColor: homeTeamColor }}
+                  />
+                  <Label htmlFor="team-home" className="text-sm text-gray-300">Home</Label>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem 
+                  value="away" 
+                  id="team-away" 
+                  className="border-[#30363D]"
+                />
+                <div className="flex items-center gap-1.5">
+                  <div 
+                    className="w-4 h-4 rounded-full"
+                    style={{ backgroundColor: awayTeamColor }}
+                  />
+                  <Label htmlFor="team-away" className="text-sm text-gray-300">Away</Label>
+                </div>
+              </div>
+            </RadioGroup>
           </div>
         </div>
       </div>

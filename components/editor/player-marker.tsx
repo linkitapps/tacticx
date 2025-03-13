@@ -12,7 +12,15 @@ interface PlayerMarkerProps {
 }
 
 export function PlayerMarker({ player, onDragStart, onDragEnd }: PlayerMarkerProps) {
-  const { updatePlayer, removePlayer, selectElement, selectedElementId, mode } = useEditorStore()
+  const { 
+    updatePlayer, 
+    removePlayer, 
+    selectElement, 
+    selectedElementId, 
+    mode,
+    homeTeamColor,
+    awayTeamColor
+  } = useEditorStore()
   const [isDragging, setIsDragging] = useState(false)
   const elementRef = useRef<HTMLDivElement>(null)
   const dragStartPosRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
@@ -24,6 +32,9 @@ export function PlayerMarker({ player, onDragStart, onDragEnd }: PlayerMarkerPro
   const touchMoveThresholdRef = useRef<boolean>(false)
 
   const isSelected = selectedElementId === player.id
+  
+  // Get player color based on team
+  const playerColor = player.team === 'home' ? homeTeamColor : awayTeamColor
 
   // Track drag start position and handle events
   const handleDragStart = (clientX: number, clientY: number) => {
@@ -252,32 +263,45 @@ export function PlayerMarker({ player, onDragStart, onDragEnd }: PlayerMarkerPro
       onTouchMove={isMobile ? handleTouchMove : undefined}
       onTouchEnd={isMobile ? handleTouchEnd : undefined}
     >
+      {/* Player Circle */}
       <div
         className={cn(
-          "flex items-center justify-center rounded-full",
-          player.team === "home"
-            ? "bg-blue-600 text-white"
-            : "bg-red-600 text-white",
-          isSelected
-            ? "ring-2 ring-white shadow-[0_0_10px_rgba(255,255,255,0.3)]"
-            : "shadow-[0_0_10px_rgba(0,0,0,0.5)]",
-          isMobile ? "w-12 h-12 text-lg" : "w-10 h-10 text-sm"
+          "flex items-center justify-center rounded-full shadow-md transition-transform duration-150",
+          isSelected ? "scale-110 ring-2 ring-white ring-opacity-70" : "",
+          isDragging ? "scale-105" : ""
         )}
+        style={{
+          width: isMobile ? "42px" : "36px",
+          height: isMobile ? "42px" : "36px",
+          backgroundColor: playerColor,
+          transform: `translate(-50%, -50%)`,
+        }}
       >
-        {player.number}
+        {/* Player Number */}
+        <span className="text-white font-bold select-none" style={{ fontSize: isMobile ? "16px" : "14px" }}>
+          {player.number}
+        </span>
       </div>
 
-      {isSelected && mode === "select" && !isDragging && (
+      {/* Delete button - only visible when selected */}
+      {isSelected && (
         <button
+          className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md hover:bg-red-600 transition-colors"
           onClick={handleDelete}
-          onTouchStart={isMobile ? handleDelete : undefined}
-          className={cn(
-            "absolute -top-2 -right-2 bg-red-600 text-white rounded-full flex items-center justify-center text-xs shadow-lg",
-            isMobile ? "w-8 h-8 text-base" : "w-6 h-6"
-          )}
+          style={{ transform: 'translate(50%, -50%)' }}
         >
           ×
         </button>
+      )}
+
+      {/* Player label if available */}
+      {player.label && (
+        <div
+          className="absolute whitespace-nowrap text-xs bg-black bg-opacity-70 text-white px-1 rounded"
+          style={{ top: "20px", left: "50%", transform: "translateX(-50%)" }}
+        >
+          {player.label}
+        </div>
       )}
     </div>
   )

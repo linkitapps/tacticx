@@ -1,22 +1,213 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useEditorStore } from "@/store/useEditorStore"
 import { useMobile } from "@/hooks/use-mobile"
 
 export function SoccerField() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const { canvasWidth, canvasHeight, setCanvasDimensions } = useEditorStore()
   const isMobile = useMobile()
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 }) // Default fallback dimensions
+  const [initialized, setInitialized] = useState(false)
+  const isResizingRef = useRef(false)
+  const lastValidDimensions = useRef({ width: 800, height: 600 }) // Track last valid dimensions
+  const dimensionsLockedRef = useRef(false) // New ref to completely lock dimensions once stable
+
+  // Detect container size and update canvas dimensions
+  useEffect(() => {
+    // Log initial mount
+    console.log("SoccerField component mounted");
+    
+    if (!containerRef.current) {
+      console.warn("Container ref is not available");
+      return;
+    }
+    
+    // Force a minimum size if container measurement fails
+    const setDefaultDimensions = () => {
+      console.log("Using default dimensions as fallback");
+      const defaultWidth = isMobile ? 350 : 800;
+      const defaultHeight = isMobile ? 500 : 520;
+      lastValidDimensions.current = { width: defaultWidth, height: defaultHeight };
+      setDimensions({ width: defaultWidth, height: defaultHeight });
+      setCanvasDimensions(defaultWidth, defaultHeight);
+      setInitialized(true);
+    };
+    
+    const updateDimensions = () => {
+      // COMPLETE LOCK: Once dimensions are locked, we never update them again
+      // This prevents any chance of recursive dimension changes
+      if (dimensionsLockedRef.current) {
+        console.log("Dimensions are locked - ignoring update request");
+        return;
+      }
+      
+      // Prevent recursive updates
+      if (isResizingRef.current) {
+        console.log("Skipping dimension update - already in progress");
+        return;
+      }
+      
+      isResizingRef.current = true;
+      
+      const container = containerRef.current;
+      if (!container) {
+        console.warn("Container not available during dimension update");
+        isResizingRef.current = false;
+        setDefaultDimensions();
+        return;
+      }
+      
+      const { width: containerWidth, height: containerHeight } = container.getBoundingClientRect();
+      
+      console.log("Container dimensions:", containerWidth, containerHeight);
+      
+      // Ensure we have valid dimensions to work with - stricter validation
+      if (containerWidth < 100 || containerHeight < 100) {
+        console.warn("Container has invalid dimensions:", containerWidth, containerHeight);
+        
+        // If already initialized, keep current dimensions instead of trying to update
+        if (initialized) {
+          console.log("Already initialized - keeping current dimensions");
+          isResizingRef.current = false;
+          return;
+        }
+        
+        // Try again in a moment if not yet initialized - container might not be fully rendered
+        setTimeout(() => {
+          isResizingRef.current = false;
+          updateDimensions();
+        }, 200);
+        return;
+      }
+      
+      // Field ratio depends on orientation (width:height)
+      const fieldRatio = isMobile ? 68/105 : 105/68
+      
+      let width, height
+      
+      if (isMobile) {
+        // For mobile: fit to container height, maintain vertical aspect ratio
+        height = Math.min(containerHeight * 0.95, 800)
+        width = height * fieldRatio
+        
+        // Ensure width doesn't exceed container width
+        if (width > containerWidth * 0.95) {
+          width = containerWidth * 0.95
+          height = width / fieldRatio
+        }
+      } else {
+        // For desktop: fit to container width, maintain horizontal aspect ratio
+        width = Math.min(containerWidth * 0.95, 1200)
+        height = width / fieldRatio
+        
+        // If height exceeds container, scale down
+        if (height > containerHeight * 0.95) {
+          height = containerHeight * 0.95
+          width = height * fieldRatio
+        }
+      }
+      
+      // Validate the calculated dimensions before applying - more strict minimum
+      if (width < 100 || height < 100) {
+        console.warn("Calculated dimensions too small:", width, height);
+        // Use the last valid dimensions instead
+        width = lastValidDimensions.current.width;
+        height = lastValidDimensions.current.height;
+      } else {
+        // Store new valid dimensions
+        lastValidDimensions.current = { width, height };
+      }
+      
+      console.log("Calculated dimensions:", width, height)
+      
+      // Round dimensions to integers to prevent fractional pixel issues
+      width = Math.round(width);
+      height = Math.round(height);
+      
+      setDimensions({ width, height })
+      setCanvasDimensions(width, height)
+      setInitialized(true)
+      
+      // Reset the resizing flag after operation completes
+      setTimeout(() => {
+        isResizingRef.current = false;
+        
+        // After 2 seconds of stable dimensions, lock them completely
+        // This prevents any chance of runaway updates
+        if (initialized && !dimensionsLockedRef.current) {
+          setTimeout(() => {
+            console.log("LOCKING DIMENSIONS PERMANENTLY:", width, height);
+            dimensionsLockedRef.current = true;
+          }, 2000);
+        }
+      }, 100);
+    }
+    
+    // Initial update
+    updateDimensions()
+    
+    // Update on resize - with debounce to avoid too frequent updates
+    let resizeTimeout: NodeJS.Timeout;
+    const handleResize = () => {
+      // Don't even try to resize if dimensions are locked
+      if (dimensionsLockedRef.current) return;
+      
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (!isResizingRef.current) {
+          updateDimensions();
+        }
+      }, 250); // Longer debounce
+    };
+    
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(containerRef.current);
+    
+    // Update on orientation change for mobile
+    const handleOrientationChange = () => {
+      // Reset dimension lock on orientation change only
+      dimensionsLockedRef.current = false;
+      
+      setTimeout(() => {
+        isResizingRef.current = false;
+        updateDimensions();
+      }, 500); // Longer timeout for orientation changes
+    }
+    window.addEventListener('orientationchange', handleOrientationChange);
+    
+    return () => {
+      if (containerRef.current) {
+        resizeObserver.disconnect();
+      }
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      clearTimeout(resizeTimeout);
+    }
+  }, [isMobile, setCanvasDimensions, initialized]);
 
   // Draw the soccer field with pixel-perfect precision
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
+    // Skip drawing if dimensions are invalid
+    if (dimensions.width < 50 || dimensions.height < 50) {
+      console.warn("Skipping field drawing due to invalid dimensions:", dimensions);
+      return;
+    }
+
+    // Set canvas dimensions explicitly
+    canvas.width = dimensions.width
+    canvas.height = dimensions.height
+
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    
     // Use crisp edges for all lines
     ctx.imageSmoothingEnabled = false
 
@@ -70,9 +261,6 @@ export function SoccerField() {
         console.error("Error drawing arc:", err);
       }
     }
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     // Field dimensions - standard soccer field has ratio of 105:68 (length:width)
     // On mobile, we'll flip it to be vertical (68:105)
@@ -430,71 +618,77 @@ export function SoccerField() {
     }
 
     ctx.setLineDash([])
-  }, [canvasWidth, canvasHeight, isMobile])
-
-  // Handle resize with precise dimensions
-  useEffect(() => {
-    const handleResize = () => {
-      if (canvasRef.current) {
-        const container = canvasRef.current.parentElement
-        if (container) {
-          // Get the container dimensions
-          const containerWidth = container.clientWidth
-          
-          // Standard soccer field has ratio of 105:68 (length:width)
-          // On mobile, we'll flip it to be vertical (68:105)
-          const fieldRatio = isMobile ? 68 / 105 : 105 / 68
-
-          let width, height;
-
-          if (isMobile) {
-            // For mobile, make the field tall and narrow
-            // We'll set the width to the container width
-            width = containerWidth;
-            
-            // And calculate height to maintain our vertical aspect ratio
-            // This will make the field longer in the vertical direction
-            height = containerWidth / fieldRatio + 60; // Add padding
-          } else {
-            // For desktop, keep the traditional horizontal field
-            width = containerWidth;
-            height = containerWidth / fieldRatio + 60; // Add padding
-          }
-
-          // Update the canvas and store dimensions
-          setCanvasDimensions(width, height)
-          canvasRef.current.width = width
-          canvasRef.current.height = height
-        }
-      }
-    }
-
-    handleResize()
-    window.addEventListener("resize", handleResize)
-
-    return () => {
-      window.removeEventListener("resize", handleResize)
-    }
-  }, [setCanvasDimensions, isMobile])
+  }, [dimensions, isMobile, canvasWidth, canvasHeight])
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    e.preventDefault(); // Prevent default touch behavior
-    // Handle touch start for dragging players
-    // ... existing code
-  };
+    // Allow default touch behavior for proper scrolling
+  }
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault(); // Prevent default touch behavior
-    // Handle touch move for dragging players
-    // ... existing code
-  };
+    // Allow default touch behavior for proper scrolling
+  }
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    e.preventDefault(); // Prevent default touch behavior
-    // Handle touch end for dragging players
-    // ... existing code
-  };
+    // Allow default touch behavior for proper scrolling
+  }
 
-  return <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} className="rounded-md shadow-lg" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} />
+  return (
+    <div 
+      ref={containerRef} 
+      className="relative flex items-center justify-center w-full h-full border border-green-500/20"
+      style={{ minWidth: "200px", minHeight: "200px" }} // Force minimum size
+    >
+      {!initialized && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-white text-opacity-70 bg-black/30 p-4 rounded">Loading field...</div>
+        </div>
+      )}
+      {dimensions.width < 100 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white bg-black/50 p-4 rounded">
+          <p>Error: Field dimensions too small</p>
+          <button 
+            onClick={() => {
+              // Unlock dimensions when manually resetting
+              dimensionsLockedRef.current = false;
+              
+              const defaultWidth = isMobile ? 350 : 800;
+              const defaultHeight = isMobile ? 500 : 520;
+              setDimensions({ width: defaultWidth, height: defaultHeight });
+              setCanvasDimensions(defaultWidth, defaultHeight);
+              setInitialized(true);
+              
+              // Lock dimensions again after manual reset
+              setTimeout(() => {
+                dimensionsLockedRef.current = true;
+              }, 1000);
+            }}
+            className="px-3 py-1 bg-blue-500 rounded hover:bg-blue-600"
+          >
+            Use Default Size
+          </button>
+        </div>
+      )}
+      <canvas
+        ref={canvasRef}
+        width={dimensions.width}
+        height={dimensions.height}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ 
+          maxWidth: '100%',
+          maxHeight: '100%',
+          touchAction: 'auto', // Allow natural touch behavior
+          visibility: dimensions.width < 100 ? 'hidden' : 'visible', // Hide if dimensions are invalid
+        }}
+        className="canvas-field"
+      />
+      {dimensionsLockedRef.current && (
+        <div className="absolute bottom-2 right-2 text-xs text-white opacity-30">
+          Locked
+        </div>
+      )}
+    </div>
+  )
 }
 

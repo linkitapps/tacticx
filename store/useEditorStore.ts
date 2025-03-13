@@ -60,7 +60,7 @@ export type EditorMode = "select" | "player" | "arrow" | "text"
 export type ArrowDrawingState = "idle" | "started" | "ended" | "complete"
 
 // Add tacticDescription to the state interface
-interface EditorState {
+export interface EditorState {
   // Canvas state
   canvasWidth: number
   canvasHeight: number
@@ -78,6 +78,10 @@ interface EditorState {
   selectedPlayerNumber: number
   selectedArrowStyle: ArrowStyle
   selectedArrowWidth: number
+  
+  // Team colors
+  homeTeamColor: string
+  awayTeamColor: string
 
   // Arrow drawing state
   arrowDrawingState: ArrowDrawingState
@@ -104,6 +108,10 @@ interface EditorState {
   tacticDescription: string
   isPublic: boolean
 
+  // Undo/Redo properties
+  canUndo: boolean
+  canRedo: boolean
+
   // Actions
   setCanvasDimensions: (width: number, height: number) => void
   setMode: (mode: EditorMode) => void
@@ -112,11 +120,14 @@ interface EditorState {
   setSelectedPlayerNumber: (number: number) => void
   setSelectedArrowStyle: (style: ArrowStyle) => void
   setSelectedArrowWidth: (width: number) => void
+  setHomeTeamColor: (color: string) => void
+  setAwayTeamColor: (color: string) => void
 
   // Player actions
-  addPlayer: (x: number, y: number) => void
+  addPlayer: (x: number, y: number, playerProps?: Partial<Omit<PlayerType, "id" | "x" | "y">>) => void
   updatePlayer: (id: string, updates: Partial<Omit<PlayerType, "id">>) => void
   removePlayer: (id: string) => void
+  resetPlayers: (players: PlayerType[]) => void
 
   // Arrow actions
   startArrow: (x: number, y: number) => void
@@ -171,6 +182,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectedPlayerNumber: 1,
   selectedArrowStyle: "solid",
   selectedArrowWidth: 2,
+  
+  // Team colors
+  homeTeamColor: "#ff0000", // Red
+  awayTeamColor: "#0000ff", // Blue
 
   // Arrow drawing state
   arrowDrawingState: "idle",
@@ -189,6 +204,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   tacticTitle: "Untitled Tactic",
   tacticDescription: "",
   isPublic: false,
+
+  // Undo/Redo properties
+  get canUndo() {
+    return get().historyIndex > 0;
+  },
+  
+  get canRedo() {
+    const { history, historyIndex } = get();
+    return historyIndex < history.players.length - 1;
+  },
 
   // Actions
   setCanvasDimensions: (width, height) => set({ canvasWidth: width, canvasHeight: height }),
@@ -211,23 +236,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setSelectedArrowWidth: (width) => set({ selectedArrowWidth: width }),
 
+  // Team color actions
+  setHomeTeamColor: (color) => set({ homeTeamColor: color }),
+  setAwayTeamColor: (color) => set({ awayTeamColor: color }),
+
   // Player actions
-  addPlayer: (x, y) => {
-    const { selectedTeam, selectedColor, selectedPlayerNumber, players } = get()
+  addPlayer: (x, y, playerProps = {}) => {
+    const { selectedTeam, selectedPlayerNumber, players, homeTeamColor, awayTeamColor } = get()
+
+    const playerTeam = playerProps.team || selectedTeam;
+    const playerColor = playerProps.color || 
+      (playerTeam === "home" ? homeTeamColor : awayTeamColor);
 
     const newPlayer: PlayerType = {
       id: nanoid(),
       x,
       y,
-      number: selectedPlayerNumber,
-      color: selectedColor,
-      team: selectedTeam,
+      number: playerProps.number || selectedPlayerNumber,
+      color: playerColor,
+      team: playerTeam,
+      label: playerProps.label || '',
     }
 
     set({
       players: [...players, newPlayer],
       // Increment the selected player number for the next player
-      selectedPlayerNumber: selectedPlayerNumber + 1,
+      selectedPlayerNumber: playerProps.number ? selectedPlayerNumber : selectedPlayerNumber + 1,
     })
     get().saveToHistory()
   },
@@ -249,6 +283,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().saveToHistory()
   },
 
+  resetPlayers: (newPlayers) => {
+    set({ players: newPlayers });
+    get().saveToHistory();
+  },
+
   // Arrow actions
   startArrow: (x, y) => {
     // Initialize the arrow with start point
@@ -260,7 +299,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         endX: x,
         endY: y,
         controlX: x,
-        controlY: y,
+        controlY: y - 30, // Slight offset for initial control point
       },
     })
   },
@@ -283,9 +322,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     let controlY = midY
 
     if (length > 0) {
-      // Offset perpendicular to the line by 1/3 of the length
-      controlX = midX - (dy * length) / 6 / length
-      controlY = midY + (dx * length) / 6 / length
+      // Offset perpendicular to the line by 1/4 of the length
+      controlX = midX - (dy * length) / 5 / length
+      controlY = midY + (dx * length) / 5 / length
     }
 
     set({
@@ -302,7 +341,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   updateArrowControl: (x, y) => {
     const { tempArrow } = get()
-    if (!tempArrow || get().arrowDrawingState !== "ended") return
+    if (!tempArrow) return
 
     // Update the control point
     set({
@@ -316,7 +355,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   completeArrow: () => {
     const { tempArrow, selectedColor, selectedArrowStyle, selectedArrowWidth, arrows } = get()
-    if (!tempArrow || get().arrowDrawingState !== "ended") return
+    if (!tempArrow) return
+
+    // Ensure start and end are not the same point
+    if (
+      Math.abs(tempArrow.startX - tempArrow.endX) < 5 &&
+      Math.abs(tempArrow.startY - tempArrow.endY) < 5
+    ) {
+      // Arrow is too small, cancel it
+      set({
+        arrowDrawingState: "idle",
+        tempArrow: null,
+      })
+      return
+    }
 
     // Create the final arrow
     const newArrow: ArrowType = {
