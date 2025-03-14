@@ -120,23 +120,101 @@ function TacticalBoardInner() {
     // Handle touch event
     if ("touches" in e && e.touches.length > 0) {
       const touch = e.touches[0]
-      return {
+      const coordinates = {
         x: touch.clientX - rect.left,
         y: touch.clientY - rect.top,
       }
+      
+      // Debug log coordinates
+      if (mode === "arrow") {
+        console.log("Touch coordinates:", coordinates, "Touch clientX:", touch.clientX, "Board rect:", { left: rect.left, right: rect.right, width: rect.width })
+      }
+      
+      return coordinates
     }
 
     // Handle mouse event
     if ("clientX" in e) {
-      return {
+      const coordinates = {
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
       }
+      
+      // Debug log coordinates
+      if (mode === "arrow") {
+        console.log("Mouse coordinates:", coordinates, "Mouse clientX:", e.clientX, "Board rect:", { left: rect.left, right: rect.right, width: rect.width })
+      }
+      
+      return coordinates
     }
 
     // Default fallback
     return { x: 0, y: 0 }
   }
+
+  // Enable global mouse tracking when drawing arrows
+  useEffect(() => {
+    // Only attach global listeners when actively drawing an arrow
+    if (mode !== "arrow" || arrowDrawingState !== "started") return;
+    
+    // Create handlers for global window events
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!boardRef.current) return;
+      
+      const rect = boardRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      console.log("Global mouse tracking:", { x, y, clientX: e.clientX, clientY: e.clientY });
+      
+      // Update arrow endpoint even when cursor is outside the board
+      if (tempArrow) {
+        const startX = tempArrow.startX;
+        const startY = tempArrow.startY;
+        
+        // Set control point to a reasonable default between start and end
+        const controlX = (startX + x) / 2;
+        const controlY = (startY + y) / 2 - 30; // Offset to create a slight curve
+        
+        useEditorStore.setState({
+          tempArrow: {
+            ...tempArrow,
+            endX: x,
+            endY: y,
+            controlX,
+            controlY
+          }
+        });
+      }
+    };
+    
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      if (mode === "arrow" && arrowDrawingState === "started" && tempArrow) {
+        // If mouse is released, end the arrow drawing
+        const rect = boardRef.current?.getBoundingClientRect();
+        if (rect) {
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          
+          endArrow(x, y);
+          completeArrow();
+          
+          // Auto-switch back to select mode
+          useEditorStore.setState({ mode: "select" });
+        }
+      }
+    };
+    
+    // Add window-level event listeners
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    
+    // Clean up function
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [mode, arrowDrawingState, tempArrow, endArrow, completeArrow]);
 
   // Handle mouse move for showing placement previews and arrow drawing
   const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
@@ -151,6 +229,9 @@ function TacticalBoardInner() {
         const startY = tempArrow.startY
         const endX = x
         const endY = y
+        
+        // Log arrow points
+        console.log("Arrow drawing:", { startX, startY, endX, endY, pointer: { x, y } })
         
         // Set control point to a reasonable default between start and end
         const controlX = (startX + endX) / 2
@@ -353,6 +434,7 @@ function TacticalBoardInner() {
         height: "100%",
         minHeight: "300px", // Ensure a minimum height
         cursor: mode === "arrow" ? "crosshair" : undefined, // Ensure arrow tool gets crosshair cursor in CSS as well
+        overflow: "visible", // Ensure coordinates outside the board are still registered
       }}
     >
       <SoccerField />
