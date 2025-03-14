@@ -200,7 +200,7 @@
 
 5.  **Link Dashboard to User Data**
 
-    *   In `/src/app/dashboard/page.tsx`, use the Supabase client to fetch and list the authenticated user’s saved tactics.
+    *   In `/src/app/dashboard/page.tsx`, use the Supabase client to fetch and list the authenticated user's saved tactics.
     *   **Reference:** Project Overview: Pages & Components – Dashboard
 
 6.  **Validation Step**
@@ -232,6 +232,57 @@
 5.  **Validation Step**
 
     *   After deployment, access the live URL and execute critical user actions (sign up, tactic creation, viewing a tactic) to ensure all flows work in production.
+
+## Phase 6: Enhanced Tactical Board Features
+
+1. **Improved Player Markers**
+
+   * Enhance the `PlayerMarker` component (`/components/editor/player-marker.tsx`) to support direct color updates without unnecessary DOM manipulation.
+   * Improve the selection and hover states for better visual feedback.
+   * Ensure player positioning and dragging are reliable across different devices.
+   * **Reference:** Core Features - Tactical Board Editor
+
+2. **Advanced Arrow System**
+
+   * Refine the arrow creation and editing system in `tactical-board.tsx` to support multiple arrow styles (solid, dashed, dotted).
+   * Implement proper arrow width control and color selection.
+   * Create the `ArrowPath` component to handle arrow rendering and interaction.
+   * Add markers that scale proportionally with arrow width.
+   * **Reference:** Core Features - Tactical Board Editor
+
+3. **Consolidated Properties Panel**
+
+   * Create a unified properties panel (`/components/editor/properties-panel.tsx`) that handles different element types:
+     * Player properties (color, number, team)
+     * Arrow properties (color, width, style)
+     * Text annotation properties
+   * Implement proper state updates when applying changes to properties.
+   * **Reference:** Core Features - Tactical Board Editor
+
+4. **Improved State Management**
+
+   * Refactor the editor state management in `editorStoreImpl.ts` to ensure:
+     * Clean state updates without side effects
+     * Proper history tracking for undo/redo
+     * Consistent selection/deselection behavior
+     * Reliable property updates for all element types
+   * **Reference:** Core Features - Tactical Board Editor
+
+5. **Device Responsiveness**
+
+   * Implement the `useDevice` hook (`/hooks/use-device.ts`) to detect device type and orientation.
+   * Adjust the tactical board layout based on device capabilities.
+   * Ensure touch interactions work properly on mobile and tablet devices.
+   * **Reference:** Project Overview - Additional Requirements
+
+6. **Validation Step**
+
+   * Test the enhanced tactical board on:
+     * Different devices (desktop, tablet, mobile)
+     * Various input methods (mouse, touch)
+     * Different browsers
+   * Verify that all element types can be created, selected, edited, and deleted without issues.
+   * Ensure properties are correctly applied and maintained across user sessions.
 
 This plan lays out each step explicitly with clear file paths and commands while citing references based on the provided project documents. Follow each step carefully to ensure compliance with the design, tech stack, and security requirements.
 
