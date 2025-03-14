@@ -1,227 +1,207 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { TacticalBoard } from "@/components/editor/tactical-board"
-import { EditorToolbar } from "@/components/editor/toolbar"
 import { useEditorStore } from "@/store/useEditorStore"
-import { useMobile } from "@/hooks/use-mobile"
+import { useDevice } from "@/hooks/use-device"
 import { Button } from "@/components/ui/button"
-import { Undo, Redo } from "lucide-react"
-import { useRouter } from "next/navigation"
-
-// Detect if we're on an iPad to apply special handling
-const isIpad = typeof navigator !== 'undefined' && 
-  (/iPad/.test(navigator.userAgent) || 
-  (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+import { cn } from "@/lib/utils"
+import { EditorPropertiesSidebar } from "@/components/editor/properties-sidebar"
 
 export default function EditorPage() {
-  // Apply iPad-specific fixes if needed
-  useEffect(() => {
-    if (isIpad) {
-      window.addEventListener('error', (event) => {
-        if (event.message && event.message.includes('manager.actions is not a function')) {
-          event.preventDefault();
-          console.warn('Prevented iPad DND error: manager.actions is not a function');
-        }
-      });
-    }
-  }, []);
-
   const { 
-    selectedElementId,
-    setCanvasDimensions,
-    mode,
-    arrowDrawingState,
-    cancelArrow,
-    selectElement,
-    undo,
-    redo,
+    mode, 
+    setMode,
     canUndo,
     canRedo,
-    saveTactic,
-  } = useEditorStore();
+    undo,
+    redo,
+    clearAll,
+    setCanvasDimensions
+  } = useEditorStore()
   
-  const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
-  const isMobile = useMobile();
-  const [isSaving, setIsSaving] = useState(false);
-  const dimensionsInitializedRef = useRef(false);
+  const { isMobile, isTablet, orientation } = useDevice()
   
-  // Handle save action
-  const handleSave = async () => {
-    if (isSaving) return;
-    
-    try {
-      setIsSaving(true);
-      const id = await saveTactic();
-      console.log("Tactic saved with ID:", id);
-      // Show success message or feedback here
-    } catch (error) {
-      console.error("Error saving tactic:", error);
-      // Show error message here
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Add keyboard shortcut handlers
+  const containerRef = useRef<HTMLDivElement>(null)
+  
+  // Update canvas dimensions based on container size
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip if user is typing in an input or textarea
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return
-      }
-
-      // Handle ESC key to cancel actions
-      if (e.key === 'Escape') {
-        if (arrowDrawingState !== 'idle') {
-          cancelArrow()
-        } else {
-          // Only clear selection, keep current tool
-          selectElement(null)
-        }
-        return
-      }
-
-      // Undo/Redo shortcuts
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        if (e.shiftKey) {
-          if (canRedo) redo();
-        } else {
-          if (canUndo) undo();
-        }
-        e.preventDefault();
-        return;
-      }
+    const updateDimensions = () => {
+      if (!containerRef.current) return
       
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        if (canRedo) redo();
-        e.preventDefault();
-        return;
-      }
-
-      // Skip other modifier key combinations
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
-        return
-      }
-
-      // Tool shortcuts (handled by EditorStore)
+      const container = containerRef.current
+      const rect = container.getBoundingClientRect()
+      
+      let width = rect.width
+      let height = rect.height
+      
+      // Make sure dimensions are valid
+      if (width < 10) width = 800
+      if (height < 10) height = 600
+      
+      setCanvasDimensions(width, height)
     }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [arrowDrawingState, cancelArrow, selectElement, undo, redo, canUndo, canRedo])
-
-  // Update the container ref handling in the EditorPage component
-  useEffect(() => {
-    if (!containerRef) return;
-
-    // Set absolute minimum dimensions to ensure visibility
-    const MIN_WIDTH = isMobile ? 320 : 640;
-    const MIN_HEIGHT = isMobile ? 400 : 480;
     
-    // Only initialize dimensions once to prevent update loops
-    if (dimensionsInitializedRef.current) {
-      return;
+    // Initial update
+    updateDimensions()
+    
+    // Update on resize
+    window.addEventListener('resize', updateDimensions)
+    
+    // Update on orientation change for mobile
+    window.addEventListener('orientationchange', updateDimensions)
+    
+    return () => {
+      window.removeEventListener('resize', updateDimensions)
+      window.removeEventListener('orientationchange', updateDimensions)
     }
-
-    const initializeDimensions = () => {
-      const rect = containerRef.getBoundingClientRect();
-      
-      // Only proceed if we have reasonable dimensions
-      if (rect.width < 100 || rect.height < 100) {
-        console.warn("Container has invalid initial dimensions, using minimums");
-        setCanvasDimensions(MIN_WIDTH, MIN_HEIGHT);
-        return;
+  }, [setCanvasDimensions])
+  
+  // Prevent zoom gestures on mobile
+  useEffect(() => {
+    if (!isMobile) return
+    
+    const preventZoom = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault()
       }
+    }
+    
+    // Option 1: Block pinch zoom
+    document.addEventListener('touchmove', preventZoom, { passive: false })
+    
+    // Option 2: Block all default touch actions on the board
+    const board = document.getElementById('tactical-board')
+    if (board) {
+      board.style.touchAction = 'none'
+    }
+    
+    return () => {
+      document.removeEventListener('touchmove', preventZoom)
       
-      // Apply minimum dimensions if needed
-      const width = Math.max(rect.width, MIN_WIDTH);
-      const height = Math.max(rect.height, MIN_HEIGHT);
-      
-      setCanvasDimensions(width, height);
-      dimensionsInitializedRef.current = true;
-    };
-
-    // Use requestAnimationFrame to ensure DOM is ready
-    requestAnimationFrame(() => {
-      initializeDimensions();
-      
-      // On mobile, recalculate dimensions once when device orientation changes
-      if (isMobile) {
-        const handleOrientationChange = () => {
-          dimensionsInitializedRef.current = false; // Allow one update after orientation change
-          
-          // Wait for orientation change to complete
-          setTimeout(() => {
-            initializeDimensions();
-          }, 500);
-        };
-        
-        window.addEventListener('orientationchange', handleOrientationChange);
-        return () => window.removeEventListener('orientationchange', handleOrientationChange);
+      if (board) {
+        board.style.touchAction = ''
       }
-    });
-  }, [containerRef, setCanvasDimensions, isMobile]);
-
-  // UNIFIED LAYOUT for mobile and desktop
+    }
+  }, [isMobile])
+  
+  // Toggle drawing tools
+  const toggleMode = (newMode: typeof mode) => {
+    setMode(mode === newMode ? 'select' : newMode)
+  }
+  
   return (
-    <div className="flex flex-col h-screen bg-[#0D1117] overflow-hidden">
-      {/* Toolbar row */}
-      <div className="bg-[#0D1117] border-b border-[#30363D] py-2 px-3">
-        <EditorToolbar />
+    <div className="flex flex-col w-full h-full overflow-hidden">
+      {/* Top toolbar */}
+      <div className="flex items-center p-2 bg-gray-800 text-white">
+        <div className="flex space-x-2">
+          <Button
+            variant={mode === 'select' ? "default" : "outline"}
+            onClick={() => setMode('select')}
+            size="sm"
+            className="text-xs"
+          >
+            Select
+          </Button>
+          
+          <Button
+            variant={mode === 'player' ? "default" : "outline"}
+            onClick={() => toggleMode('player')}
+            size="sm"
+            className="text-xs"
+          >
+            Player
+          </Button>
+          
+          <Button
+            variant={mode === 'arrow' ? "default" : "outline"}
+            onClick={() => toggleMode('arrow')}
+            size="sm"
+            className="text-xs"
+          >
+            Arrow
+          </Button>
+          
+          <Button
+            variant={mode === 'text' ? "default" : "outline"}
+            onClick={() => toggleMode('text')}
+            size="sm"
+            className="text-xs"
+          >
+            Text
+          </Button>
+        </div>
+        
+        <div className="ml-auto flex space-x-2">
+          <Button
+            variant="outline"
+            onClick={undo}
+            disabled={!canUndo}
+            size="sm"
+            className="text-xs"
+          >
+            Undo
+          </Button>
+          
+          <Button
+            variant="outline"
+            onClick={redo}
+            disabled={!canRedo}
+            size="sm"
+            className="text-xs"
+          >
+            Redo
+          </Button>
+          
+          <Button
+            variant="destructive"
+            onClick={clearAll}
+            size="sm"
+            className="text-xs"
+          >
+            Clear
+          </Button>
+        </div>
       </div>
-
-      {/* Main content area - full width */}
-      <div className="flex-1 bg-[#0D1117] relative overflow-hidden"> 
+      
+      {/* Main content area with tactical board and properties sidebar */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Tactical board container */}
         <div 
-          className="w-full h-full"
-          ref={setContainerRef}
-          style={{ 
-            minHeight: isMobile ? '400px' : '480px',
-            minWidth: isMobile ? '320px' : '640px',
-          }}
+          ref={containerRef}
+          id="tactical-board"
+          className={cn(
+            "flex-1 bg-gray-900 overflow-hidden",
+            // Only adjust layout for mobile in portrait mode, tablets and desktops should always be centered
+            "justify-center flex relative",
+            isMobile && orientation === 'portrait' ? "items-start pt-4" : "items-center"
+          )}
         >
           <TacticalBoard />
         </div>
+        
+        {/* Properties sidebar - hide on mobile */}
+        {!isMobile && (
+          <EditorPropertiesSidebar />
+        )}
       </div>
-
-      {/* Status bar with context-sensitive tips and undo/redo for mobile */}
-      <div className="bg-[#161B22] border-t border-[#30363D] py-2 px-3 text-xs text-gray-400">
-        <div className="flex justify-between items-center">
-          <div>
-            {mode === 'select' && 'Tap elements to select, drag to move'}
-            {mode === 'player' && 'Tap on field to place players'}
-            {mode === 'arrow' && 'Tap to start arrow, tap again to end'}
-            {mode === 'text' && 'Tap on field to add text'}
-          </div>
-          
-          {/* History controls for mobile */}
-          {isMobile && (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-gray-400 hover:text-white rounded-md"
-                disabled={!canUndo}
-                onClick={undo}
-              >
-                <Undo className="h-3.5 w-3.5" />
-              </Button>
-              
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-gray-400 hover:text-white rounded-md"
-                disabled={!canRedo}
-                onClick={redo}
-              >
-                <Redo className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
+      
+      {/* Status bar */}
+      <div className="flex items-center p-2 bg-gray-800 text-white text-xs">
+        <div className="text-gray-400">
+          Mode: <span className="text-white font-medium">{mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
         </div>
+        
+        {isMobile && (
+          <div className="ml-auto text-gray-400">
+            {mode === 'select' && 'Tap to select • Drag to move'}
+            {mode === 'player' && 'Tap to place player'}
+            {mode === 'arrow' && 'Tap to start/end arrow'}
+            {mode === 'text' && 'Tap to add text'}
+          </div>
+        )}
       </div>
     </div>
-  );
+  )
 }
 

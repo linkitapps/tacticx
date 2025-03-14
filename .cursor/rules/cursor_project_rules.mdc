@@ -130,4 +130,6 @@ alwaysApply: true
 *   Reflect similar routing principles for alternative frameworks (e.g., React Router, SvelteKit) in future projects without mixing version patterns.
 *   Follow the prescribed best practices for each technology in the tech stack to ensure optimal performance, security, and maintainability.
 *   do not add any new tools or funtionality unless i ask for it.
+*   do not deploy to vercel unless i ask you to do it.
+*   always run the app on port 3000, kill the terminal if its in use but dont run on a different port
 

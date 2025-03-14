@@ -1,309 +1,289 @@
 "use client"
 
-import React, { useRef, useState, useEffect } from "react"
-import { type PlayerType, useEditorStore } from "@/store/useEditorStore"
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react"
+import { useEditorStore } from "@/store/editorStoreImpl"
+import { useDevice } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
-import { useMobile } from "@/hooks/use-mobile"
+import { Player } from "@/store/editorStoreImpl"
 
 interface PlayerMarkerProps {
-  player: PlayerType
-  onDragStart?: () => void
-  onDragEnd?: () => void
+  player: Player
+  onDragStart: () => void
+  onDragEnd: () => void
 }
 
 export function PlayerMarker({ player, onDragStart, onDragEnd }: PlayerMarkerProps) {
-  const { 
-    updatePlayer, 
-    removePlayer, 
-    selectElement, 
-    selectedElementId, 
-    mode,
-    homeTeamColor,
-    awayTeamColor
-  } = useEditorStore()
+  const { isMobile, isTablet } = useDevice()
+  const { selectedElementId, selectElement, updatePlayerPosition, deletePlayer } = useEditorStore()
+  
+  // Set local state
   const [isDragging, setIsDragging] = useState(false)
-  const elementRef = useRef<HTMLDivElement>(null)
-  const dragStartPosRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
-  const isMobile = useMobile()
-
-  // For mobile long press
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null)
-  const touchStartTimeRef = useRef<number>(0)
-  const touchMoveThresholdRef = useRef<boolean>(false)
-
+  const [position, setPosition] = useState({ x: player.x, y: player.y })
+  const [showDelete, setShowDelete] = useState(false)
+  
+  const playerRef = useRef<HTMLDivElement>(null)
+  const circleRef = useRef<HTMLDivElement>(null)
+  const startPosRef = useRef({ x: 0, y: 0 })
+  const offsetRef = useRef({ x: 0, y: 0 })
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
   const isSelected = selectedElementId === player.id
   
-  // Get player color based on team
-  const playerColor = player.team === 'home' ? homeTeamColor : awayTeamColor
-
-  // Track drag start position and handle events
-  const handleDragStart = (clientX: number, clientY: number) => {
-    if (!elementRef.current) return
-
-    // Auto-switch to select mode when dragging starts
-    if (mode !== "select") {
-      useEditorStore.setState({ mode: "select" })
-    }
-
+  // Simple debugging log for property changes
+  useEffect(() => {
+    console.log(`Player ${player.id} updated:`, 
+      JSON.stringify({
+        number: player.number,
+        color: player.color,
+        label: player.label,
+        isSelected
+      })
+    );
+  }, [player.id, player.number, player.color, player.label, isSelected])
+  
+  // Reset position when player coordinates change
+  useEffect(() => {
+    setPosition({ x: player.x, y: player.y })
+  }, [player.x, player.y])
+  
+  // Handle click/tap on player
+  const handleClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation()
+    console.log("Player clicked:", player.id, player.number, player.color)
+    
     // Select this player
     selectElement(player.id)
-
-    // Calculate the current element position relative to the board
-    dragStartPosRef.current = {
-      x: player.x,
-      y: player.y,
-      clientX,
-      clientY
-    }
-
-    setIsDragging(true)
     
-    // Haptic feedback for drag start
-    if (isMobile && window.navigator && window.navigator.vibrate) {
-      try {
-        window.navigator.vibrate(30)
-      } catch (err) {
-        console.warn("Vibration not supported", err)
+    // Show delete button when selected
+    setShowDelete(true)
+    
+    // Hide delete button after a timeout
+    const hideTimeout = setTimeout(() => {
+      if (selectedElementId === player.id) {
+        setShowDelete(false)
       }
-    }
-
-    // Notify parent 
-    if (onDragStart) onDragStart()
-
-    // Prevent text selection during drag
-    document.body.style.userSelect = 'none'
-    document.body.style.webkitUserSelect = 'none'
-  }
-
-  // Handle mouse move during drag
-  const handleDragMove = (clientX: number, clientY: number) => {
-    if (!isDragging || !dragStartPosRef.current) return
-
-    const deltaX = clientX - dragStartPosRef.current.clientX
-    const deltaY = clientY - dragStartPosRef.current.clientY
-
-    // Update player position directly
-    updatePlayer(player.id, {
-      x: dragStartPosRef.current.x + deltaX,
-      y: dragStartPosRef.current.y + deltaY
-    })
-  }
-
-  // Handle end of drag operation
-  const handleDragEnd = () => {
-    if (!isDragging) return
-
-    setIsDragging(false)
-    dragStartPosRef.current = null
-
-    // Notify parent
-    if (onDragEnd) onDragEnd()
-
-    // Re-enable text selection
-    document.body.style.userSelect = ''
-    document.body.style.webkitUserSelect = ''
-  }
-
-  // Mouse event handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Only initiate drag on left mouse button
-    if (e.button !== 0) return
+    }, 3000)
     
-    // Don't start drag if clicked on a button
-    if ((e.target as HTMLElement).tagName === 'BUTTON') return
-
-    e.stopPropagation()
-    handleDragStart(e.clientX, e.clientY)
-
-    // Add global event listeners for mouse move and up
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  }
-
-  const handleMouseMove = (e: MouseEvent) => {
-    e.preventDefault()
-    handleDragMove(e.clientX, e.clientY)
-  }
-
-  const handleMouseUp = (e: MouseEvent) => {
-    e.preventDefault()
-    handleDragEnd()
-    
-    // Remove global event listeners
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
-  }
-
-  const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation()
-    // Auto-switch to select mode when clicking player
-    if (mode !== "select") {
-      useEditorStore.setState({ mode: "select" })
-    }
-    selectElement(player.id)
-  }
-
-  // Touch event handlers
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.stopPropagation()
-    
-    // Reset the threshold flag
-    touchMoveThresholdRef.current = false
-    
-    // Store initial touch time for differentiating between tap and long press
-    touchStartTimeRef.current = Date.now()
-    
-    // Get the first touch point
-    const touch = e.touches[0]
-
-    // First, select the player
-    handleClick(e)
-    
-    // Set up long press timer for potential edit actions in the future
-    longPressTimer.current = setTimeout(() => {
-      // Only activate long press if user hasn't started dragging
-      if (!touchMoveThresholdRef.current) {
-        clearLongPressTimer()
-        
-        // Add haptic feedback for long press
-        if (window.navigator && window.navigator.vibrate) {
-          try {
-            window.navigator.vibrate([30, 30, 80])
-          } catch (err) {
-            console.warn("Vibration not supported", err)
-          }
-        }
-        
-        // Future: Could implement player number editing or other actions here
-      }
-    }, 500) // 500ms long press
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    // Prevent scrolling
-    e.preventDefault()
-    
-    const touch = e.touches[0]
-    
-    // If we haven't started dragging yet and the finger moved more than a threshold
-    if (!touchMoveThresholdRef.current && dragStartPosRef.current === null) {
-      const touchTime = Date.now() - touchStartTimeRef.current
-      
-      // If touched briefly (not a long press) and moved, start dragging
-      if (touchTime < 500) {
-        touchMoveThresholdRef.current = true
-        clearLongPressTimer()
-        handleDragStart(touch.clientX, touch.clientY)
-      }
-    }
-    
-    // Continue drag movement if we've started dragging
-    if (isDragging) {
-      handleDragMove(touch.clientX, touch.clientY)
-    }
-  }
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    e.stopPropagation()
-    clearLongPressTimer()
-    
-    // If we were dragging, end the drag operation
-    if (isDragging) {
-      handleDragEnd()
-    }
-  }
+    return () => clearTimeout(hideTimeout)
+  }, [player.id, player.number, player.color, selectElement, selectedElementId])
   
-  // Cancel long press timer when needed
-  const clearLongPressTimer = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-    }
-  }
-
-  const handleDelete = (e: React.MouseEvent | React.TouchEvent) => {
+  // Handle delete button click
+  const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    removePlayer(player.id)
+    deletePlayer(player.id)
+  }, [deletePlayer, player.id])
+  
+  // Mouse drag handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!playerRef.current) return
     
-    // Add haptic feedback for deletion
-    if (isMobile && window.navigator && window.navigator.vibrate) {
-      try {
-        window.navigator.vibrate([30, 50, 80])
-      } catch (err) {
-        console.warn("Vibration not supported", err)
-      }
+    e.stopPropagation()
+    
+    // Capture initial position
+    startPosRef.current = { x: e.clientX, y: e.clientY }
+    offsetRef.current = { x: position.x, y: position.y }
+    
+    // Start dragging
+    setIsDragging(true)
+    onDragStart()
+    
+    // Select this player
+    selectElement(player.id)
+  }, [position, onDragStart, player.id, selectElement])
+  
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return
+    
+    // Calculate new position
+    const deltaX = e.clientX - startPosRef.current.x
+    const deltaY = e.clientY - startPosRef.current.y
+    
+    const newX = offsetRef.current.x + deltaX
+    const newY = offsetRef.current.y + deltaY
+    
+    // Update local position
+    setPosition({ x: newX, y: newY })
+  }, [isDragging])
+  
+  const handleMouseUp = useCallback(() => {
+    if (!isDragging) return
+    
+    // End dragging
+    setIsDragging(false)
+    onDragEnd()
+    
+    // Update store with final position
+    updatePlayerPosition(player.id, position.x, position.y)
+  }, [isDragging, onDragEnd, player.id, position.x, position.y, updatePlayerPosition])
+  
+  // Touch drag handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!playerRef.current || e.touches.length !== 1) return
+    
+    e.stopPropagation()
+    
+    // Prevent default to avoid scrolling
+    e.preventDefault()
+    
+    const touch = e.touches[0]
+    
+    // Capture initial position
+    startPosRef.current = { x: touch.clientX, y: touch.clientY }
+    offsetRef.current = { x: position.x, y: position.y }
+    
+    // Set up long press detection for selection without dragging
+    longPressTimeoutRef.current = setTimeout(() => {
+      // Select this player on long press
+      selectElement(player.id)
+      setShowDelete(true)
+    }, 500)
+    
+    // Start dragging
+    setIsDragging(true)
+    onDragStart()
+    
+    // Select this player
+    selectElement(player.id)
+  }, [position, onDragStart, player.id, selectElement])
+  
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!isDragging || e.touches.length !== 1) return
+    
+    // Cancel long press detection
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current)
+      longPressTimeoutRef.current = null
     }
-  }
-
-  // Clean up any timers and event listeners
+    
+    // Prevent default to avoid scrolling
+    e.preventDefault()
+    
+    const touch = e.touches[0]
+    
+    // Calculate new position
+    const deltaX = touch.clientX - startPosRef.current.x
+    const deltaY = touch.clientY - startPosRef.current.y
+    
+    const newX = offsetRef.current.x + deltaX
+    const newY = offsetRef.current.y + deltaY
+    
+    // Update local position
+    setPosition({ x: newX, y: newY })
+  }, [isDragging])
+  
+  const handleTouchEnd = useCallback(() => {
+    // Cancel long press detection
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current)
+      longPressTimeoutRef.current = null
+    }
+    
+    if (!isDragging) return
+    
+    // End dragging
+    setIsDragging(false)
+    onDragEnd()
+    
+    // Update store with final position
+    updatePlayerPosition(player.id, position.x, position.y)
+  }, [isDragging, onDragEnd, player.id, position.x, position.y, updatePlayerPosition])
+  
+  // Set up global event listeners
   useEffect(() => {
+    // Only add listeners if dragging
+    if (!isDragging) return
+    
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('touchmove', handleTouchMove, { passive: false })
+    window.addEventListener('touchend', handleTouchEnd)
+    
     return () => {
-      clearLongPressTimer()
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('touchmove', handleTouchMove)
+      window.removeEventListener('touchend', handleTouchEnd)
     }
-  }, [])
-
+  }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove, handleTouchEnd])
+  
+  // Get the current display color - use player's actual color always
+  const displayColor = player.color; // Always use player's actual color
+  
   return (
     <div
-      ref={elementRef}
+      ref={playerRef}
       className={cn(
-        "absolute cursor-move select-none",
-        isSelected ? "z-10" : "z-0",
-        isDragging ? "opacity-70" : ""
+        "absolute transform -translate-x-1/2 -translate-y-1/2",
+        isDragging ? "z-30" : "z-20",
+        "touch-none"
       )}
       style={{
-        left: player.x,
-        top: player.y,
-        touchAction: "none",
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        pointerEvents: "auto", // Important: override parent's pointer-events: none
+        cursor: isDragging ? "grabbing" : "grab",
+        userSelect: "none",
       }}
       onClick={handleClick}
-      onMouseDown={!isMobile ? handleMouseDown : undefined}
-      onTouchStart={isMobile ? handleTouchStart : undefined}
-      onTouchMove={isMobile ? handleTouchMove : undefined}
-      onTouchEnd={isMobile ? handleTouchEnd : undefined}
+      onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
+      data-player-id={player.id}
+      data-player-number={player.number}
+      data-player-color={player.color}
     >
-      {/* Player Circle */}
+      {/* Player circle - simplified with direct props rendering */}
       <div
+        ref={circleRef}
         className={cn(
-          "flex items-center justify-center rounded-full shadow-md transition-transform duration-150",
-          isSelected ? "scale-110 ring-2 ring-white ring-opacity-70" : "",
-          isDragging ? "scale-105" : ""
+          "flex items-center justify-center rounded-full player-circle",
+          "text-white font-bold",
+          "transition-all",
+          isSelected ? "border-[3px] border-white ring-2 ring-blue-500" : "border-2 border-white"
         )}
         style={{
-          width: isMobile ? "42px" : "36px",
-          height: isMobile ? "42px" : "36px",
-          backgroundColor: playerColor,
-          transform: `translate(-50%, -50%)`,
+          width: `${player.size || 44}px`,
+          height: `${player.size || 44}px`,
+          fontSize: `${(player.size || 44) * 0.5}px`,
+          backgroundColor: displayColor,
+          transition: "background-color 0.2s ease-in, border 0.2s ease-in"
         }}
       >
-        {/* Player Number */}
-        <span className="text-white font-bold select-none" style={{ fontSize: isMobile ? "16px" : "14px" }}>
-          {player.number}
-        </span>
+        {player.number}
       </div>
-
-      {/* Delete button - only visible when selected */}
-      {isSelected && (
-        <button
-          className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md hover:bg-red-600 transition-colors"
-          onClick={handleDelete}
-          style={{ transform: 'translate(50%, -50%)' }}
-        >
-          ×
-        </button>
-      )}
-
-      {/* Player label if available */}
+      
+      {/* Player label */}
       {player.label && (
-        <div
-          className="absolute whitespace-nowrap text-xs bg-black bg-opacity-70 text-white px-1 rounded"
-          style={{ top: "20px", left: "50%", transform: "translateX(-50%)" }}
+        <div 
+          className="player-label absolute text-white text-center w-full -bottom-6 px-1 bg-black bg-opacity-50 rounded text-xs whitespace-nowrap overflow-hidden"
+          style={{ maxWidth: `${player.size * 2 || 88}px` }}
         >
           {player.label}
         </div>
       )}
+      
+      {/* Delete button */}
+      {isSelected && showDelete && (
+        <button
+          className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+          onClick={handleDelete}
+          style={{ pointerEvents: "auto" }}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            className="w-4 h-4"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      )}
     </div>
   )
-}
-
+} 

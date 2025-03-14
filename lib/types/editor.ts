@@ -4,7 +4,6 @@ export type PlayerType = {
   y: number
   number: number
   color: string
-  team: "home" | "away"
   label?: string
 }
 
@@ -64,7 +63,6 @@ export interface EditorState {
   // Editor state
   mode: EditorMode
   selectedElementId: string | null
-  selectedTeam: "home" | "away"
   selectedColor: string
   selectedPlayerNumber: number
   selectedArrowStyle: ArrowStyle

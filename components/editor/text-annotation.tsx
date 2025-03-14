@@ -1,354 +1,312 @@
 "use client"
 
-import React from "react"
-import { useRef, useState, useEffect } from "react"
-import { type TextAnnotationType, useEditorStore } from "@/store/useEditorStore"
+import React, { useState, useRef, useEffect, useCallback } from "react"
+import { useEditorStore } from "@/store/useEditorStore"
+import { useDevice } from "@/hooks/use-device"
 import { cn } from "@/lib/utils"
-import { useMobile } from "@/hooks/use-mobile"
 
 interface TextAnnotationProps {
-  annotation: TextAnnotationType
-  onDragStart?: () => void
-  onDragEnd?: () => void
+  annotation: any // Will type properly once we see the store structure
+  onDragStart: () => void
+  onDragEnd: () => void
 }
 
 export function TextAnnotation({ annotation, onDragStart, onDragEnd }: TextAnnotationProps) {
-  const { updateText, removeText, selectElement, selectedElementId, mode } = useEditorStore()
-  const [isEditing, setIsEditing] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const elementRef = useRef<HTMLDivElement>(null)
-  const dragStartPosRef = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
-  const isMobile = useMobile()
-
-  // For mobile long press
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null)
-  const touchStartTimeRef = useRef<number>(0)
-  const touchMoveThresholdRef = useRef<boolean>(false)
-
-  const isSelected = selectedElementId === annotation.id
-
-  // Track drag start position and handle events
-  const handleDragStart = (clientX: number, clientY: number) => {
-    if (!elementRef.current) return
-
-    // Auto-switch to select mode when dragging starts
-    if (mode !== "select") {
-      useEditorStore.setState({ mode: "select" })
-    }
-
-    // Select this annotation
-    selectElement(annotation.id)
-
-    // Calculate the current element position relative to the board
-    dragStartPosRef.current = {
-      x: annotation.x,
-      y: annotation.y,
-      clientX,
-      clientY
-    }
-
-    setIsDragging(true)
-    
-    // Haptic feedback for drag start
-    if (isMobile && window.navigator && window.navigator.vibrate) {
-      try {
-        window.navigator.vibrate(30)
-      } catch (err) {
-        console.warn("Vibration not supported", err)
-      }
-    }
-
-    // Notify parent 
-    if (onDragStart) onDragStart()
-
-    // Prevent text selection during drag
-    document.body.style.userSelect = 'none'
-    document.body.style.webkitUserSelect = 'none'
-  }
-
-  // Handle mouse move during drag
-  const handleDragMove = (clientX: number, clientY: number) => {
-    if (!isDragging || !dragStartPosRef.current) return
-
-    const deltaX = clientX - dragStartPosRef.current.clientX
-    const deltaY = clientY - dragStartPosRef.current.clientY
-
-    // Update annotation position directly
-    updateText(annotation.id, {
-      x: dragStartPosRef.current.x + deltaX,
-      y: dragStartPosRef.current.y + deltaY
-    })
-  }
-
-  // Handle end of drag operation
-  const handleDragEnd = () => {
-    if (!isDragging) return
-
-    setIsDragging(false)
-    dragStartPosRef.current = null
-
-    // Notify parent
-    if (onDragEnd) onDragEnd()
-
-    // Re-enable text selection
-    document.body.style.userSelect = ''
-    document.body.style.webkitUserSelect = ''
-  }
-
-  // Mouse event handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Only initiate drag on left mouse button
-    if (e.button !== 0) return
-    
-    // Don't start drag if clicked on a button
-    if ((e.target as HTMLElement).tagName === 'BUTTON') return
-
-    e.stopPropagation()
-    handleDragStart(e.clientX, e.clientY)
-
-    // Add global event listeners for mouse move and up
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  }
-
-  const handleMouseMove = (e: MouseEvent) => {
-    e.preventDefault()
-    handleDragMove(e.clientX, e.clientY)
-  }
-
-  const handleMouseUp = (e: MouseEvent) => {
-    e.preventDefault()
-    handleDragEnd()
-    
-    // Remove global event listeners
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
-  }
-
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    // Auto-switch to select mode for editing
-    if (mode !== "select") {
-      useEditorStore.setState({ mode: "select" })
-    }
-    setIsEditing(true)
-    setTimeout(() => {
-      textareaRef.current?.focus()
-      textareaRef.current?.select()
-    }, 0)
-  }
-
-  // For mobile, use long press instead of double click
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.stopPropagation()
-    
-    // Reset the threshold flag
-    touchMoveThresholdRef.current = false
-    
-    // Store initial touch time for differentiating between tap and long press
-    touchStartTimeRef.current = Date.now()
-    
-    // Get the first touch point
-    const touch = e.touches[0]
-
-    // First, select the text
-    handleClick(e)
-
-    // Set up long press timer
-    longPressTimer.current = setTimeout(() => {
-      // Only activate long press if user hasn't started dragging
-      if (!touchMoveThresholdRef.current) {
-        clearLongPressTimer()
-        
-        // Auto-switch to select mode for editing
-        if (mode !== "select") {
-          useEditorStore.setState({ mode: "select" })
-        }
-        
-        setIsEditing(true)
-        
-        // Add haptic feedback for edit activation
-        if (window.navigator && window.navigator.vibrate) {
-          try {
-            window.navigator.vibrate([30, 30, 80])
-          } catch (err) {
-            console.warn("Vibration not supported", err)
-          }
-        }
-        
-        setTimeout(() => {
-          textareaRef.current?.focus()
-          textareaRef.current?.select()
-        }, 0)
-      }
-    }, 500) // 500ms long press
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    // Prevent scrolling
-    e.preventDefault()
-    
-    // If the user is editing, don't handle drag
-    if (isEditing) return
-    
-    const touch = e.touches[0]
-    
-    // If we haven't started dragging yet and the finger moved more than a threshold
-    if (!touchMoveThresholdRef.current && dragStartPosRef.current === null) {
-      const touchTime = Date.now() - touchStartTimeRef.current
-      
-      // If touched briefly (not a long press) and moved, start dragging
-      if (touchTime < 500) {
-        touchMoveThresholdRef.current = true
-        clearLongPressTimer()
-        handleDragStart(touch.clientX, touch.clientY)
-      }
-    }
-    
-    // Continue drag movement if we've started dragging
-    if (isDragging) {
-      handleDragMove(touch.clientX, touch.clientY)
-    }
-  }
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    e.stopPropagation()
-    clearLongPressTimer()
-    
-    // If we were dragging, end the drag operation
-    if (isDragging) {
-      handleDragEnd()
-    }
-  }
+  const { isMobile, isTablet } = useDevice()
+  const { selectedElementId, selectElement, updateTextPosition, updateTextContent, deleteText } = useEditorStore()
   
-  // Cancel long press timer when needed
-  const clearLongPressTimer = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
+  const [isDragging, setIsDragging] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [position, setPosition] = useState({ x: annotation.x, y: annotation.y })
+  const [text, setText] = useState(annotation.text)
+  
+  const textRef = useRef<HTMLDivElement>(null)
+  const startPosRef = useRef({ x: 0, y: 0 })
+  const offsetRef = useRef({ x: 0, y: 0 })
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  
+  const isSelected = selectedElementId === annotation.id
+  
+  // Reset position and text from props when annotation changes
+  useEffect(() => {
+    setPosition({ x: annotation.x, y: annotation.y })
+    setText(annotation.text)
+  }, [annotation.x, annotation.y, annotation.text])
+  
+  // Handle click/tap on text
+  const handleClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation()
+    
+    // Select this text
+    selectElement(annotation.id)
+  }, [annotation.id, selectElement])
+  
+  // Handle double click to start editing
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    
+    if (isMobile) return // Skip on mobile, use long press instead
+    
+    setIsEditing(true)
+    
+    // Focus and select all text in the input when it becomes available
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus()
+        inputRef.current.select()
+      }
+    }, 10)
+  }, [isMobile])
+  
+  // Handle long press on mobile to start editing
+  const handleLongPress = useCallback(() => {
+    if (!isMobile) return
+    
+    setIsEditing(true)
+    
+    // Focus the input when it becomes available
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus()
+      }
+    }, 10)
+  }, [isMobile])
+  
+  // Handle delete button click
+  const handleDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    deleteText(annotation.id)
+  }, [deleteText, annotation.id])
+  
+  // Mouse drag handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Don't start dragging if we're in edit mode
+    if (isEditing || !textRef.current) return
+    
+    e.stopPropagation()
+    
+    // Capture initial position
+    startPosRef.current = { x: e.clientX, y: e.clientY }
+    offsetRef.current = { x: position.x, y: position.y }
+    
+    // Start dragging
+    setIsDragging(true)
+    onDragStart()
+    
+    // Select this text
+    selectElement(annotation.id)
+  }, [position, isEditing, onDragStart, annotation.id, selectElement])
+  
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return
+    
+    // Calculate new position
+    const deltaX = e.clientX - startPosRef.current.x
+    const deltaY = e.clientY - startPosRef.current.y
+    
+    const newX = offsetRef.current.x + deltaX
+    const newY = offsetRef.current.y + deltaY
+    
+    // Update local position
+    setPosition({ x: newX, y: newY })
+  }, [isDragging])
+  
+  const handleMouseUp = useCallback(() => {
+    if (!isDragging) return
+    
+    // End dragging
+    setIsDragging(false)
+    onDragEnd()
+    
+    // Update store with final position
+    updateTextPosition(annotation.id, position.x, position.y)
+  }, [isDragging, onDragEnd, annotation.id, position.x, position.y, updateTextPosition])
+  
+  // Touch drag handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    // Don't start dragging if we're in edit mode
+    if (isEditing || !textRef.current || e.touches.length !== 1) return
+    
+    e.stopPropagation()
+    
+    const touch = e.touches[0]
+    
+    // Capture initial position
+    startPosRef.current = { x: touch.clientX, y: touch.clientY }
+    offsetRef.current = { x: position.x, y: position.y }
+    
+    // Start long press detection
+    const longPressTimeout = setTimeout(() => {
+      handleLongPress()
+    }, 800)
+    
+    // Store timeout ID to clear it on move/end
+    textRef.current.dataset.longPressTimeoutId = String(longPressTimeout)
+    
+    // Start dragging
+    setIsDragging(true)
+    onDragStart()
+    
+    // Select this text
+    selectElement(annotation.id)
+  }, [position, isEditing, onDragStart, annotation.id, selectElement, handleLongPress])
+  
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!isDragging || e.touches.length !== 1 || !textRef.current) return
+    
+    // Cancel long press detection
+    const timeoutId = textRef.current.dataset.longPressTimeoutId
+    if (timeoutId) {
+      clearTimeout(parseInt(timeoutId, 10))
+      delete textRef.current.dataset.longPressTimeoutId
     }
-  }
-
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    updateText(annotation.id, { text: e.target.value })
-  }
-
-  const handleTextBlur = () => {
+    
+    const touch = e.touches[0]
+    
+    // Calculate new position
+    const deltaX = touch.clientX - startPosRef.current.x
+    const deltaY = touch.clientY - startPosRef.current.y
+    
+    const newX = offsetRef.current.x + deltaX
+    const newY = offsetRef.current.y + deltaY
+    
+    // Update local position
+    setPosition({ x: newX, y: newY })
+  }, [isDragging])
+  
+  const handleTouchEnd = useCallback(() => {
+    if (!textRef.current) return
+    
+    // Cancel long press detection
+    const timeoutId = textRef.current.dataset.longPressTimeoutId
+    if (timeoutId) {
+      clearTimeout(parseInt(timeoutId, 10))
+      delete textRef.current.dataset.longPressTimeoutId
+    }
+    
+    if (!isDragging) return
+    
+    // End dragging
+    setIsDragging(false)
+    onDragEnd()
+    
+    // Update store with final position
+    updateTextPosition(annotation.id, position.x, position.y)
+  }, [isDragging, onDragEnd, annotation.id, position.x, position.y, updateTextPosition])
+  
+  // Handle text change
+  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setText(e.target.value)
+  }, [])
+  
+  // Handle edit completion
+  const handleStopEditing = useCallback(() => {
     setIsEditing(false)
-  }
-
-  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
+    updateTextContent(annotation.id, text)
+  }, [annotation.id, text, updateTextContent])
+  
+  // Handle keyboard events in the textarea
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // If Escape, cancel editing
+    if (e.key === 'Escape') {
+      setText(annotation.text) // Reset to original
       setIsEditing(false)
     }
-  }
-
-  const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation()
-    // Auto-switch to select mode when clicking text
-    if (mode !== "select") {
-      useEditorStore.setState({ mode: "select" })
-    }
-    selectElement(annotation.id)
-  }
-
-  const handleDelete = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation()
-    removeText(annotation.id)
     
-    // Add haptic feedback for deletion
-    if (isMobile && window.navigator && window.navigator.vibrate) {
-      try {
-        window.navigator.vibrate([30, 50, 80])
-      } catch (err) {
-        console.warn("Vibration not supported", err)
-      }
+    // If Enter (without shift), complete editing
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault() // Prevent newline
+      handleStopEditing()
     }
-  }
-
-  // Clean up any timers and event listeners
+  }, [annotation.text, handleStopEditing])
+  
+  // Set up global event listeners
   useEffect(() => {
+    // Only add listeners if dragging
+    if (!isDragging) return
+    
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('touchmove', handleTouchMove)
+    window.addEventListener('touchend', handleTouchEnd)
+    
     return () => {
-      clearLongPressTimer()
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('touchmove', handleTouchMove)
+      window.removeEventListener('touchend', handleTouchEnd)
     }
-  }, [])
-
-  // Get text style properties with defaults
-  const textStyles = {
-    fontSize: `${annotation.fontSize || 16}px`,
-    color: annotation.color || "#FFFFFF",
-    fontWeight: annotation.isBold ? "bold" : "normal",
-    fontStyle: annotation.isItalic ? "italic" : "normal",
-    textAlign: annotation.alignment || "center",
-  }
-
+  }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove, handleTouchEnd])
+  
   return (
     <div
-      ref={elementRef}
+      ref={textRef}
       className={cn(
-        "absolute cursor-move select-none max-w-[200px]", 
-        isSelected ? "z-10" : "z-0",
-        isDragging ? "opacity-70" : ""
+        "absolute transform -translate-x-1/2",
+        isDragging ? "z-30" : "z-20",
+        "max-w-[200px]"
       )}
       style={{
-        left: annotation.x,
-        top: annotation.y,
-        touchAction: "none",
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        pointerEvents: "auto",
+        cursor: isEditing ? "text" : "grab"
       }}
       onClick={handleClick}
-      onMouseDown={!isMobile ? handleMouseDown : undefined}
-      onTouchStart={isMobile ? handleTouchStart : undefined}
-      onTouchMove={isMobile ? handleTouchMove : undefined}
-      onTouchEnd={isMobile ? handleTouchEnd : undefined}
+      onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
       onDoubleClick={handleDoubleClick}
     >
       {isEditing ? (
         <textarea
-          ref={textareaRef}
-          value={annotation.text}
+          ref={inputRef}
+          value={text}
           onChange={handleTextChange}
-          onBlur={handleTextBlur}
-          onKeyDown={handleTextKeyDown}
-          className={cn(
-            "bg-black/80 border border-gray-700 text-white p-2 rounded resize-none min-w-[120px] min-h-[60px]",
-            isMobile && "min-w-[160px] min-h-[80px] text-base",
-          )}
-          style={textStyles}
+          onBlur={handleStopEditing}
+          onKeyDown={handleKeyDown}
+          className="min-w-[100px] min-h-[60px] bg-black bg-opacity-70 p-2 rounded text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
           autoFocus
         />
       ) : (
         <div
           className={cn(
-            "p-2 rounded whitespace-pre-wrap",
-            isSelected
-              ? "ring-2 ring-white shadow-[0_0_10px_rgba(255,255,255,0.3)]"
-              : "shadow-[0_0_10px_rgba(0,0,0,0.5)]",
-            "bg-black/80 text-white",
-            isMobile && "p-3",
+            "p-2 rounded text-white text-center",
+            "bg-black bg-opacity-70",
+            isSelected && "ring-2 ring-blue-500"
           )}
-          style={textStyles}
         >
-          {annotation.text}
+          {text.split('\n').map((line: string, i: number) => (
+            <React.Fragment key={i}>
+              {i > 0 && <br />}
+              {line || ' '}
+            </React.Fragment>
+          ))}
+          
+          {/* Delete button */}
+          {isSelected && (
+            <button
+              className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+              onClick={handleDelete}
+              style={{ pointerEvents: "auto" }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                className="w-4 h-4"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          )}
         </div>
-      )}
-
-      {isSelected && mode === "select" && !isDragging && (
-        <button
-          onClick={handleDelete}
-          onTouchStart={isMobile ? handleDelete : undefined}
-          className={cn(
-            "absolute -top-2 -right-2 bg-red-600 text-white rounded-full flex items-center justify-center text-xs shadow-lg",
-            isMobile ? "w-8 h-8 text-base" : "w-6 h-6",
-          )}
-        >
-          ×
-        </button>
       )}
     </div>
   )
-}
-
+} 
