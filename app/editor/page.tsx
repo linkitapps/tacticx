@@ -101,7 +101,7 @@ export default function EditorPage() {
             size="sm"
             className="text-xs"
           >
-            Select
+            선택
           </Button>
           
           <Button
@@ -110,7 +110,7 @@ export default function EditorPage() {
             size="sm"
             className="text-xs"
           >
-            Player
+            선수
           </Button>
           
           <Button
@@ -119,7 +119,7 @@ export default function EditorPage() {
             size="sm"
             className="text-xs"
           >
-            Arrow
+            화살표
           </Button>
           
           <Button
@@ -128,7 +128,7 @@ export default function EditorPage() {
             size="sm"
             className="text-xs"
           >
-            Text
+            텍스트
           </Button>
         </div>
         
@@ -140,7 +140,7 @@ export default function EditorPage() {
             size="sm"
             className="text-xs"
           >
-            Undo
+            실행취소
           </Button>
           
           <Button
@@ -150,7 +150,7 @@ export default function EditorPage() {
             size="sm"
             className="text-xs"
           >
-            Redo
+            다시실행
           </Button>
           
           <Button
@@ -159,7 +159,7 @@ export default function EditorPage() {
             size="sm"
             className="text-xs"
           >
-            Clear
+            전체삭제
           </Button>
         </div>
       </div>

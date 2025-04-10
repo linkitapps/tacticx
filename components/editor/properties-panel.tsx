@@ -166,12 +166,12 @@ function PlayerPropertiesPanel({ player }: { player: Player }) {
 
   return (
     <div className="p-4 bg-gray-800 rounded-md">
-      <h3 className="text-white font-semibold mb-4">Player Properties</h3>
+      <h3 className="text-white font-semibold mb-4">선수 속성</h3>
       
       <div className="flex items-center mb-4">
         <div className="flex-1">
           <Label htmlFor="player-number" className="text-sm font-medium text-gray-300">
-            Preview
+            미리보기
           </Label>
           <div className="mt-1 flex justify-center">
             <div
@@ -190,7 +190,7 @@ function PlayerPropertiesPanel({ player }: { player: Player }) {
           <div className="space-y-3">
             <div>
               <Label htmlFor="player-number" className="text-sm font-medium text-gray-300">
-                Number
+                번호
               </Label>
               <div className="flex items-center">
                 <Input
@@ -221,14 +221,14 @@ function PlayerPropertiesPanel({ player }: { player: Player }) {
             
             <div>
               <Label htmlFor="player-name" className="text-sm font-medium text-gray-300">
-                Label
+                라벨
               </Label>
               <Input
                 id="player-name"
                 type="text"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="Enter player name or position"
+                placeholder="선수 이름 또는 포지션 입력"
                 className="h-9 bg-[#21262D] border-[#30363D] focus:border-primary"
               />
             </div>
@@ -238,7 +238,7 @@ function PlayerPropertiesPanel({ player }: { player: Player }) {
       
       <div className="mb-4">
         <Label className="text-sm font-medium text-gray-300">
-          Color
+          색상
         </Label>
         <div className="flex gap-2">
           <Input
@@ -280,7 +280,7 @@ function PlayerPropertiesPanel({ player }: { player: Player }) {
           disabled={!isDirty}
         >
           <Save className="h-4 w-4" />
-          Apply Changes
+          변경 적용
         </Button>
         
         <Button
@@ -347,86 +347,72 @@ function ArrowPropertiesPanel({ arrow }: { arrow: Arrow }) {
   };
 
   return (
-    <div className="p-4 bg-gray-800 rounded-md">
-      <h3 className="text-white font-semibold mb-4">Arrow Properties</h3>
-      
-      <div className="mb-4">
-        <Label className="text-sm font-medium text-gray-300">
-          Color
-        </Label>
-        <div className="flex gap-2">
+    <div className="space-y-6">
+      <h3 className="text-lg font-medium">화살표 속성</h3>
+
+      <div className="space-y-2">
+        <Label className="text-sm">색상</Label>
+        <div className="flex items-center space-x-2">
           <Input
             type="color"
             value={color}
             onChange={(e) => setColor(e.target.value)}
-            className="w-12 h-9 p-1 bg-[#21262D] border-[#30363D] focus:border-primary"
+            className="w-10 h-10 p-1 bg-gray-700 border-gray-600"
           />
-          <Input
-            type="text"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="flex-1 h-9 bg-[#21262D] border-[#30363D] focus:border-primary"
-          />
+          <div className="text-sm text-gray-400">
+            {color === "#FFFFFF" ? "흰색" : color}
+          </div>
         </div>
       </div>
-      
-      <div className="mb-4">
-        <Label className="text-sm font-medium text-gray-300">
-          Width ({width}px)
-        </Label>
+
+      <div className="space-y-2">
+        <Label className="text-sm">두께 ({width}px)</Label>
         <Slider
           value={[width]}
           min={1}
           max={10}
           step={1}
-          onValueChange={([value]) => setWidth(value)}
-          className="mt-2"
+          onValueChange={(value) => setWidth(value[0])}
+          className="py-2"
         />
       </div>
-      
-      <div className="mb-4">
-        <Label className="text-sm font-medium text-gray-300">
-          Style
-        </Label>
+
+      <div className="space-y-2">
+        <Label className="text-sm">스타일</Label>
         <RadioGroup 
           value={style} 
-          onValueChange={(value) => setStyle(value as ArrowStyle)} 
-          className="flex gap-4 mt-2"
+          onValueChange={(value) => setStyle(value as ArrowStyle)}
+          className="flex space-x-2"
         >
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="solid" id="style-solid" className="border-[#30363D]" />
-            <Label htmlFor="style-solid" className="text-gray-300">Solid</Label>
+          <div className="flex items-center space-x-1">
+            <RadioGroupItem value="solid" id="style-solid" />
+            <Label htmlFor="style-solid" className="text-sm">실선</Label>
           </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="dashed" id="style-dashed" className="border-[#30363D]" />
-            <Label htmlFor="style-dashed" className="text-gray-300">Dashed</Label>
+          <div className="flex items-center space-x-1">
+            <RadioGroupItem value="dashed" id="style-dashed" />
+            <Label htmlFor="style-dashed" className="text-sm">점선</Label>
           </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="dotted" id="style-dotted" className="border-[#30363D]" />
-            <Label htmlFor="style-dotted" className="text-gray-300">Dotted</Label>
+          <div className="flex items-center space-x-1">
+            <RadioGroupItem value="dotted" id="style-dotted" />
+            <Label htmlFor="style-dotted" className="text-sm">짧은점선</Label>
           </div>
         </RadioGroup>
       </div>
-      
-      <div className="flex gap-2 mt-6">
-        <Button
-          onClick={handleApply}
-          className={cn(
-            "w-full flex items-center justify-center gap-1.5 transition-all",
-            isDirty
-              ? "bg-primary hover:bg-primary/90 text-white"
-              : "bg-[#21262D] hover:bg-[#30363D] text-gray-400 border border-[#30363D]",
-          )}
+
+      <div className="flex space-x-2 pt-2">
+        <Button 
+          onClick={handleApply} 
           disabled={!isDirty}
+          className="flex-1 h-8 text-xs"
+          variant={isDirty ? "default" : "outline"}
         >
-          <Save className="h-4 w-4" />
-          Apply Changes
+          <Save className="h-3.5 w-3.5 mr-1" />
+          변경 적용
         </Button>
-        
-        <Button
-          onClick={handleDelete}
+        <Button 
+          onClick={handleDelete} 
           variant="destructive"
-          className="px-3"
+          className="w-8 h-8 p-0"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -491,11 +477,11 @@ function TextPropertiesPanel({ text }: { text: TextAnnotation }) {
 
   return (
     <div className="p-4 bg-gray-800 rounded-md">
-      <h3 className="text-white font-semibold mb-4">Text Properties</h3>
+      <h3 className="text-white font-semibold mb-4">텍스트 속성</h3>
       
       <div className="mb-4">
         <Label className="text-sm font-medium text-gray-300">
-          Text Content
+          텍스트 내용
         </Label>
         <textarea
           value={content}
@@ -507,7 +493,7 @@ function TextPropertiesPanel({ text }: { text: TextAnnotation }) {
       
       <div className="mb-4">
         <Label className="text-sm font-medium text-gray-300">
-          Color
+          색상
         </Label>
         <div className="flex gap-2 mt-1">
           <Input
@@ -527,7 +513,7 @@ function TextPropertiesPanel({ text }: { text: TextAnnotation }) {
       
       <div className="mb-4">
         <Label className="text-sm font-medium text-gray-300">
-          Font Size ({fontSize}px)
+          글꼴 크기 ({fontSize}px)
         </Label>
         <Slider
           value={[fontSize]}
@@ -551,7 +537,7 @@ function TextPropertiesPanel({ text }: { text: TextAnnotation }) {
           disabled={!isDirty}
         >
           <Save className="h-4 w-4" />
-          Apply Changes
+          변경 적용
         </Button>
         
         <Button

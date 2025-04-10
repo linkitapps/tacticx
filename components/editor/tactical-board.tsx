@@ -114,7 +114,7 @@ export function TacticalBoard() {
     }
     else if (mode === 'text') {
       // Create new text annotation at current position
-      addText(x, y, 'New text')
+      addText(x, y, '새 텍스트')
     }
     else if (mode === 'arrow') {
       if (arrowDrawingState === 'idle') {
