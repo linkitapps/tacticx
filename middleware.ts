@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
+  // Redirect from root path to editor
+  if (request.nextUrl.pathname === '/') {
+    return NextResponse.redirect(new URL('/editor', request.url))
+  }
+
   // Set headers to bypass authentication
   const response = NextResponse.next()
   
