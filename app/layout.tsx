@@ -4,7 +4,6 @@ import { Inter, Outfit, Space_Grotesk } from "next/font/google"
 import { Toaster } from "react-hot-toast"
 
 import { ThemeProvider } from "@/components/theme-provider"
-import { MainNav } from "@/components/nav/main-nav"
 import { cn } from "@/lib/utils"
 import "./globals.css"
 
@@ -49,7 +48,6 @@ export default function RootLayout({
         )}
       >
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
-          <MainNav />
           <main>{children}</main>
           <Toaster position="top-right" />
         </ThemeProvider>
